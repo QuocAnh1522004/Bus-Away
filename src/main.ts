@@ -42,6 +42,7 @@ async function boot() {
     hud.hideEnd();
     game.dispose();
     game = new Game(stage, assets, hud);
+    sfx.startMusic();
   };
 
   stage.renderer.domElement.addEventListener('pointerdown', (e) => {

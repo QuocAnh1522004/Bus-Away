@@ -22,13 +22,14 @@ declare global {
 }
 
 export const STORE = {
-  // Placeholders: swap for the real store pages before trafficking.
-  android: 'https://play.google.com/store/apps/details?id=com.example.busaway',
-  ios: 'https://apps.apple.com/app/id0000000000',
+  android: 'https://play.google.com/store/apps/details?id=com.ig.busybus', // "Bus Away" by iKame Games
+  // No iOS listing found yet (Nov 2026). Until one exists, iOS users land on the Play page too.
+  // Put the App Store URL here when the app is published.
+  ios: '',
 };
 
 export function openStore() {
-  const url = /iphone|ipad|ipod|macintosh/i.test(navigator.userAgent) ? STORE.ios : STORE.android;
+  const url = (/iphone|ipad|ipod|macintosh/i.test(navigator.userAgent) && STORE.ios) || STORE.android;
   try {
     if (typeof window.install === 'function') return window.install(); // Mintegral
     if (window.FbPlayableAd?.onCTAClick) return window.FbPlayableAd.onCTAClick(); // Meta

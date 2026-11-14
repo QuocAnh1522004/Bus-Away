@@ -35,7 +35,7 @@ Parked buses can be tapped again to do another lap. One level takes about 45–5
 **Game feel:** squash-and-stretch on tap, white flash, smooth accel/brake curves, wheel spin, pitch on
 braking, passengers hop into their seats with rising-pitch blips, the lid drops on with a bounce, the gate
 arm swings, the queue shuffles forward, counters pop, hint hand after 3 s idle, confetti end card.
-Sounds are synthesized with WebAudio (no audio files).
+Sounds and the background music loop are synthesized with WebAudio (no audio files).
 
 ## Project layout
 
