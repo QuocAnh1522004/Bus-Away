@@ -30,16 +30,6 @@ const CSS = `
 #ui .frame{position:absolute;left:0;top:0;transform-origin:0 0}
 
 /* ---- world-anchored (sizes follow the frame scale --s) */
-/* ROAD counter (buses on the road / capacity), anchored inside the loop; sizes follow --s */
-.rcount{position:absolute;left:0;top:0;will-change:transform}
-.rc{display:flex;align-items:center;gap:calc(14px*var(--s));height:calc(100px*var(--s));padding:0 calc(34px*var(--s)) 0 calc(22px*var(--s));
-  transform:translate(-50%,-50%);border-radius:calc(24px*var(--s));background:linear-gradient(#3b88e8,#2266cc);
-  box-shadow:inset 0 calc(4px*var(--s)) 0 rgba(255,255,255,.35),inset 0 calc(-7px*var(--s)) 0 rgba(0,0,0,.22),0 calc(6px*var(--s)) calc(12px*var(--s)) rgba(0,0,0,.28)}
-.rc svg{width:calc(70px*var(--s));height:calc(70px*var(--s))}
-.rc b{font:900 calc(64px*var(--s))/1 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;color:#fff;letter-spacing:.02em;
-  -webkit-text-stroke:calc(8px*var(--s)) #163a6b;paint-order:stroke fill;font-variant-numeric:tabular-nums}
-.rc.punch{animation:rcPunch .4s ease-out}
-@keyframes rcPunch{0%{scale:1 1}20%{scale:1 1.15}45%{scale:1 .94}70%{scale:1 1.04}100%{scale:1 1}} /* y only */
 .hand{position:absolute;left:0;top:0;width:calc(150px*var(--s));height:calc(150px*var(--s));opacity:0;transition:opacity .25s;will-change:transform}
 .hand.show{opacity:1}
 .hand svg{width:100%;height:100%;animation:tapAnim 1s ease-in-out infinite;transform-origin:30% 10%;filter:drop-shadow(0 4px 4px rgba(0,0,0,.3))}
@@ -95,7 +85,6 @@ const CSS = `
 @keyframes fall{to{transform:translateY(2100px) rotate(720deg)}}
 `;
 
-const BUS_SVG = `<svg viewBox="0 0 48 48" stroke="#163a6b" stroke-width="3" stroke-linejoin="round"><rect x="3" y="12" width="6" height="10" rx="2.5" fill="#fff"/><rect x="39" y="12" width="6" height="10" rx="2.5" fill="#fff"/><rect x="11" y="37" width="8" height="8" rx="2.5" fill="#fff"/><rect x="29" y="37" width="8" height="8" rx="2.5" fill="#fff"/><rect x="8" y="4" width="32" height="36" rx="8" fill="#fff"/><rect x="13" y="10" width="22" height="13" rx="3" fill="#2a6fd6" stroke-width="2.5"/><circle cx="16" cy="32" r="2.6" fill="#2a6fd6" stroke="none"/><circle cx="32" cy="32" r="2.6" fill="#2a6fd6" stroke="none"/></svg>`;
 
 const HAND_SVG = `<svg viewBox="0 0 64 64"><path fill="#fff" stroke="#2b3a6b" stroke-width="3" stroke-linejoin="round"
  d="M20 6c3 0 5 2 5 5v17l2-1c3-1 5 0 6 2l1 2 2-1c3-1 5 0 6 2v1l2-1c3-1 6 1 6 4v12c0 9-6 15-15 15h-3c-6 0-10-3-13-8L10 40c-2-3-1-6 2-7 2-1 4 0 6 2l2 3V11c0-3 0-5 0-5z"/></svg>`;
@@ -115,11 +104,7 @@ export class Hud {
   private handTarget: Vector3 | null = null;
   onCta: () => void = () => {};
 
-  private readonly counter: HTMLDivElement;
-  private readonly counterText: HTMLElement;
-  private counterAnchor: Vector3 | null = null;
-
-  constructor(private readonly capacity: number) {
+  constructor(capacity: number) {
     const style = document.createElement('style');
     style.textContent = CSS;
     document.head.appendChild(style);
@@ -127,7 +112,7 @@ export class Hud {
     const el = document.createElement('div');
     el.id = 'ui';
     el.innerHTML = `
-      <div class="world"><div class="rcount"><div class="rc">${BUS_SVG}<b></b></div></div><div class="hand"><div class="ring"></div>${HAND_SVG}</div></div>
+      <div class="world"><div class="hand"><div class="ring"></div>${HAND_SVG}</div></div>
       <div class="dim"></div>
       <div class="frame">
         <div class="top"><div class="pill stat timer-pill"><svg viewBox="0 0 24 24" width="44" height="44"><circle cx="12" cy="13" r="9" fill="none" stroke="#fff" stroke-width="2.6"/><path d="M12 8v5l3 2" fill="none" stroke="#fff" stroke-width="2.6" stroke-linecap="round"/><path d="M9 2.5h6" stroke="#fff" stroke-width="2.6" stroke-linecap="round"/></svg><b class="timer"></b></div><div class="pill cap-pill">ROAD <div class="cap"></div></div><div class="pill stat moves-pill">MOVES <b class="moves"></b></div></div>
@@ -145,9 +130,6 @@ export class Hud {
     const cap = el.querySelector('.cap')!;
     for (let i = 0; i < capacity; i++) this.capCells.push(cap.appendChild(document.createElement('i')));
     this.hand = el.querySelector('.hand')!;
-    this.counter = el.querySelector('.rc')!;
-    this.counterText = this.counter.querySelector('b')!;
-    this.counterText.textContent = `0/${capacity}`;
     this.toastEl = el.querySelector('.toast')!;
     this.tipEl = el.querySelector('.tip')!;
     this.end = el.querySelector('.end')!;
@@ -195,11 +177,6 @@ export class Hud {
 
   /** Road slots: `colors[i]` (hex) is the bus in slot i; missing entries are free slots. */
   setRoad(colors: number[]) {
-    const txt = `${colors.length}/${this.capacity}`;
-    if (this.counterText.textContent !== txt) {
-      this.counterText.textContent = txt;
-      this.punchCounter(); // punch on every change (bus sent out / bus left the road)
-    }
     this.capCells.forEach((c, i) => {
       const col = colors[i];
       c.classList.toggle('on', col !== undefined);
@@ -223,24 +200,7 @@ export class Hud {
     this.el.querySelector('.timer-pill')!.classList.toggle('low', low);
   }
 
-  /** Where the ROAD counter sits in the world (projected every frame). */
-  setCounterAnchor(p: Vector3) {
-    this.counterAnchor = p;
-  }
-
-  /** Punch-scale the ROAD counter (a bus was sent out). */
-  punchCounter() {
-    this.restartAnim(this.counter, 'punch');
-  }
-
-  private restartAnim(el: HTMLElement, cls: string) {
-    el.classList.remove(cls);
-    void el.offsetWidth; // restart the animation
-    el.classList.add(cls);
-  }
-
   warnCapacity() {
-    this.restartAnim(this.counter, 'punch');
     this.capPill.classList.remove('warn');
     void this.capPill.offsetWidth; // restart animation
     this.capPill.classList.add('warn');
@@ -292,10 +252,6 @@ export class Hud {
   /** Per-frame: project the hint hand's 3D anchor into the world layer, tick the toast. */
   update(dt: number, camera: Camera, w: number, h: number) {
     if (window.innerWidth !== this.laidOut.w || window.innerHeight !== this.laidOut.h) this.layout(); // missed resize event
-    if (this.counterAnchor) {
-      const p = v.copy(this.counterAnchor).project(camera);
-      (this.counter.parentElement as HTMLElement).style.transform = `translate(${((p.x + 1) / 2) * w}px,${((1 - p.y) / 2) * h}px)`;
-    }
     if (this.handTarget) {
       const p = v.copy(this.handTarget).project(camera);
       this.hand.style.transform = `translate(${((p.x + 1) / 2) * w}px,${((1 - p.y) / 2) * h}px) translate(-22%,-8%)`;

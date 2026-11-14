@@ -19,7 +19,7 @@ export const LEVEL1: LevelDef = {
     { s: 23.0, queue: [...run('yellow', 10), ...run('green', 10), ...run('blue', 4), ...run('red', 6)] },
   ],
   slots: [-3.3, -1.1, 1.1, 3.3],
-  counter: [0, 1.6],
+  counter: [0, 1.95], // clear of the lot's front curb (z 0.44..1.01)
   scenery: {
     trees: [
       // inside the loop

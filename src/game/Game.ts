@@ -8,6 +8,7 @@ import { notifyGameEnd } from '../playable/sdk';
 import roadPathData from '../assets/gen/road-path.json';
 import { Bus } from './Bus';
 import { Confetti } from './Confetti';
+import { RoadCounter } from './RoadCounter';
 import type { Hud } from './Hud';
 import { LEVEL, LOT, type BusDef } from './level';
 import { Models } from './models';
@@ -65,6 +66,8 @@ export class Game {
   private readonly atGate = new Set<Bus>();
   private lotSeq = 0;
   private readonly confetti: Confetti;
+  /** ROAD counter: a flat sign on the snow inside the loop (3D, so buses cover it). */
+  private readonly roadCounter: RoadCounter;
 
   constructor(
     private readonly stage: Stage,
@@ -77,6 +80,8 @@ export class Game {
     this.road = LEVEL.road ? Path.fromXZ(LEVEL.road) : Path.fromXZ(roadPathData.path.slice().reverse());
     this.world = new World(this.root, this.models, assets, this.road, this.tweens);
     this.confetti = new Confetti(this.root);
+    this.roadCounter = new RoadCounter(new Vector3(LEVEL.counter[0], 0, LEVEL.counter[1]), 4.2, LEVEL.capacity);
+    this.root.add(this.roadCounter.mesh);
     this.entry = this.road.pointAt(0).clone();
     this.exit = this.road.pointAt(this.road.length).clone();
 
@@ -146,8 +151,6 @@ export class Game {
       if (q.has('moves')) this.movesLeft = Number(q.get('moves'));
       if (q.has('time')) this.timeLeft = Number(q.get('time'));
     }
-    // ROAD counter in the middle of the level: inside the loop, just above the lot edge
-    hud.setCounterAnchor(new Vector3(LEVEL.counter[0], 0.05, LEVEL.counter[1]));
     hud.setMoves(this.movesLeft, false);
     hud.setTime(this.timeLeft, false);
     hud.showTip('Tap a bus to pick up its colour!');
@@ -223,6 +226,7 @@ export class Game {
       bus.shake();
       sfx.roadFull();
       this.hud.warnCapacity();
+      this.roadCounter.punch();
       this.hud.toast('No more space on road');
       return;
     }
@@ -240,7 +244,7 @@ export class Game {
     bus.bounce(0.8);
     bus.flash();
     this.onRoadBuses.push(bus);
-    this.syncRoadHud(); // the counter punches on the change
+    this.syncRoadHud(); // the ROAD counter punches on the change
 
     const from = bus.root.position.clone();
     let path: Path;
@@ -341,6 +345,7 @@ export class Game {
   /** ROAD pill: one slot per CAPACITY, filled with the colour of the bus using it. */
   private syncRoadHud() {
     this.hud.setRoad(this.onRoadBuses.map((b) => COLORS[b.color]));
+    this.roadCounter?.set(this.onRoad); // punches on every change (it's created after the first sync)
   }
 
   private canBoard(bus: Bus, st: Station) {
@@ -419,6 +424,7 @@ export class Game {
   update(dt: number) {
     this.tweens.update(dt);
     this.confetti.update(dt);
+    this.roadCounter.update(dt);
     this.updateLimits(dt);
     this.planLot();
     this.updateTraffic(dt);
