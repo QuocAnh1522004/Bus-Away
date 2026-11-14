@@ -20,8 +20,7 @@ const PORTRAIT = { w: 1080, h: 1920 };
 const LANDSCAPE = { w: 3413, h: 1920 };
 /** Design-px bands the HUD reserves (top: ROAD pill; bottom: CTA in portrait only). */
 const BAND_TOP = 140; // ROAD pill only: the start tip may overlay the scene (it hides on the first tap)
-const BAND_BOTTOM_PORTRAIT = 200;
-const BAND_BOTTOM_LANDSCAPE = 40;
+const BAND_BOTTOM = 200; // PLAY NOW, bottom-centre in both orientations
 
 const CSS = `
 #ui{position:fixed;inset:0;pointer-events:none;z-index:10;overflow:hidden;color:#fff;
@@ -75,7 +74,9 @@ const CSS = `
 .cta{position:absolute;left:50%;bottom:56px;translate:-50% 0;pointer-events:auto;cursor:pointer;border:0;padding:26px 96px;border-radius:999px;
   font:900 56px system-ui,sans-serif;color:#fff;background:linear-gradient(#5fd35a,#2ea33a);box-shadow:0 9px 0 #1d7a28;animation:breathe 1.6s ease-in-out infinite}
 @keyframes breathe{50%{scale:1.07}}
-.frame.land .main-cta{left:auto;right:120px;bottom:110px;translate:none}
+/* PLAY NOW lives outside the frame: pinned to the real bottom-centre of the screen, sized with --s */
+#ui .main-cta{bottom:calc(56px*var(--s) + env(safe-area-inset-bottom,0px));padding:calc(26px*var(--s)) calc(96px*var(--s));
+  font-size:calc(56px*var(--s));box-shadow:0 calc(9px*var(--s)) 0 #1d7a28}
 .dim{background:rgba(0,0,0,.6);opacity:0;transition:opacity .35s}
 .dim.show{opacity:1}
 /* end card: the in-game HUD fades out under the dim (only the logo + CTA stay bright) */
@@ -132,9 +133,9 @@ export class Hud {
         <div class="top"><div class="pill stat timer-pill"><svg viewBox="0 0 24 24" width="44" height="44"><circle cx="12" cy="13" r="9" fill="none" stroke="#fff" stroke-width="2.6"/><path d="M12 8v5l3 2" fill="none" stroke="#fff" stroke-width="2.6" stroke-linecap="round"/><path d="M9 2.5h6" stroke="#fff" stroke-width="2.6" stroke-linecap="round"/></svg><b class="timer"></b></div><div class="pill cap-pill">ROAD <div class="cap"></div></div><div class="pill stat moves-pill">MOVES <b class="moves"></b></div></div>
         <div class="tip hide"></div>
         <div class="toast"></div>
-        <button class="cta main-cta">PLAY NOW</button>
         <div class="end"><img class="logo" alt="" draggable="false" src="${logoUrl}"><button class="cta">PLAY NOW</button></div>
-      </div>`;
+      </div>
+      <button class="cta main-cta">PLAY NOW</button>`;
     document.body.appendChild(el);
     this.el = el;
     this.frame = el.querySelector('.frame')!;
@@ -189,7 +190,7 @@ export class Hud {
     const d = land ? LANDSCAPE : PORTRAIT;
     const s = Math.min(w / d.w, h / d.h);
     const pad = (h - d.h * s) / 2;
-    return { top: (pad + BAND_TOP * s) / h, bottom: (pad + (land ? BAND_BOTTOM_LANDSCAPE : BAND_BOTTOM_PORTRAIT) * s) / h };
+    return { top: (pad + BAND_TOP * s) / h, bottom: (pad + BAND_BOTTOM * s) / h };
   }
 
   /** Road slots: `colors[i]` (hex) is the bus in slot i; missing entries are free slots. */
