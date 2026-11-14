@@ -113,7 +113,7 @@ produces 1.9 KB of JSON. No path editor, no hand-placed waypoints, and nothing t
 
 ## 5. Runtime performance
 
-- About **115 draw calls / 47k triangles** mid-game, 10 shader programs. Everything is unlit, so
+- About **173 draw calls / 62k triangles** mid-game, 12 shader programs (the passenger silhouette outline accounts for ~58 of the calls). Everything is unlit, so
   fragment cost is a texture fetch and a few multiply-adds.
 - **Shared materials**: one per prop type and one outline per colour. Buses get their own material
   *instance* only so the tap flash stays local; it uses the same program, so there's no extra compile.

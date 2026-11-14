@@ -1,4 +1,4 @@
-import { Mesh, type Object3D, type Material, Color, type AnimationClip } from 'three';
+import { Mesh, SkinnedMesh, type Object3D, type Material, Color, type AnimationClip } from 'three';
 import { clone as cloneSkinned } from 'three/examples/jsm/utils/SkeletonUtils.js';
 import type { Assets } from '../engine/assets';
 import {
@@ -106,6 +106,7 @@ export class Models {
     // Match the rest to what the clips expect (facing is applied on a wrapper by Passenger).
     obj.quaternion.identity();
     const mat = this.stickmanMaterial(color);
+    const skinned: SkinnedMesh[] = [];
     obj.traverse((o) => {
       const m = o as Mesh;
       if (!m.isMesh) return;
@@ -115,8 +116,22 @@ export class Models {
       } else {
         m.material = mat;
         m.frustumCulled = false; // skinned bounds are bind-pose only
+        if ((m as SkinnedMesh).isSkinnedMesh) skinned.push(m as SkinnedMesh);
       }
     });
+    // Silhouette outline (stickman.mtl USE_OUTLINE_PASS): an inverted hull that shares the geometry
+    // and is bound to the SAME skeleton, so it deforms with every animation.
+    for (const m of skinned) {
+      const hull = new SkinnedMesh(m.geometry, this.outlineMaterial(color));
+      hull.name = `${m.name}_outline`;
+      hull.frustumCulled = false;
+      hull.bind(m.skeleton, m.bindMatrix);
+      hull.raycast = () => {};
+      m.parent!.add(hull);
+      hull.position.copy(m.position);
+      hull.quaternion.copy(m.quaternion);
+      hull.scale.copy(m.scale);
+    }
     return obj;
   }
 

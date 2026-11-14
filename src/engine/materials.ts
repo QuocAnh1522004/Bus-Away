@@ -175,7 +175,9 @@ export function createStickmanMaterial(matcap: Texture, color: Color | number) {
       uniform float spec;
       varying vec3 vViewNormal;
       void main() {
-        vec2 muv = normalize(vViewNormal).xy * 0.5 + 0.5;
+        // Stay inside the matcap disk: at silhouettes xy -> unit length, and radius 0.5 would sample
+        // the texture's white background (bilinear/mip bleed = light fringes around the head).
+        vec2 muv = normalize(vViewNormal).xy * 0.46 + 0.5;
         vec4 m = texture2D(matcap, muv);
         vec3 c = toLinear(color);
         vec3 base = mix(c * multiply, c + 0.15, m.r);
@@ -216,11 +218,12 @@ export function createOutlineMaterial(color: Color | number, width = 0.0222) {
   return new ShaderMaterial({
     name: 'Outline',
     side: BackSide,
-    uniforms: { color: u(new Color(color)), width: u(width) },
+    uniforms: { color: u(new Color(color)), width: u(width), depthPush: u(0.08) },
     vertexShader: /* glsl */ `
       #include <common>
       #include <skinning_pars_vertex>
       uniform float width;
+      uniform float depthPush;
       void main() {
         #include <beginnormal_vertex>
         #include <skinbase_vertex>
@@ -228,7 +231,12 @@ export function createOutlineMaterial(color: Color | number, width = 0.0222) {
         #include <begin_vertex>
         #include <skinning_vertex>
         transformed += normalize(objectNormal) * width;
-        gl_Position = projectionMatrix * modelViewMatrix * vec4(transformed, 1.0);
+        vec4 mv = modelViewMatrix * vec4(transformed, 1.0);
+        // Push the hull away from the camera ALONG THE VIEW RAY (screen position unchanged, so the
+        // silhouette line keeps its width). In concave areas (neck, armpits) the hull's back faces
+        // otherwise sit a hair in front of the body and z-fight -> flickering dark slivers.
+        mv.xyz += normalize(mv.xyz) * depthPush;
+        gl_Position = projectionMatrix * mv;
       }
     `,
     fragmentShader: /* glsl */ `

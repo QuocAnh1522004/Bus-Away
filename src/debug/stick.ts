@@ -17,8 +17,11 @@ export function runStick(assets: Assets) {
     const p = new Passenger(models, (['red', 'blue', 'green'] as const)[i]);
     p.root.position.set(0, 0, (i - 1) * 2);
     p.root.scale.setScalar(1);
+    const q = new URLSearchParams(location.search);
+    const idleT = q.has('idle') ? t : 0.5;
     p.play(pose, 0);
-    p.update(pose === 'Walk' ? t : 0.5);
+    // deterministic pose (Passenger randomises the Idle phase)
+    p.mixer.setTime(pose === 'Walk' ? (q.has('idle') ? 0.3 : t) : idleT);
     stage.scene.add(p.root);
     return p;
   });
@@ -30,8 +33,10 @@ export function runStick(assets: Assets) {
   stage.scene.add(arrow, tip);
   stage.autoFit = false;
   const close = new URLSearchParams(location.search).has('close');
-  stage.camera.position.set(close ? 3.2 : 9, close ? 1.0 : 1.6, close ? 0 : 0.6);
-  stage.camera.lookAt(new Vector3(0, close ? 0.7 : 0.8, close ? 0 : 0.6));
+  const head = new URLSearchParams(location.search).has('head');
+  // `head`: tight shot of the Idle passenger (z = -2) from the game camera's side (-Z, above)
+  stage.camera.position.set(head ? 1.2 : close ? 3.2 : 9, head ? 2.4 : close ? 1.0 : 1.6, head ? -4.6 : close ? 0 : 0.6);
+  stage.camera.lookAt(new Vector3(0, head ? 0.75 : close ? 0.7 : 0.8, head ? -2 : close ? 0 : 0.6));
   stage.camera.fov = 40;
   stage.camera.near = 0.1;
   stage.resize();
