@@ -1,7 +1,7 @@
 # Bus Away — Playable Ad (Three.js)
 
 A playable ad for **Bus Away**: send colour-matched buses around a loop to pick up queuing passengers.
-It ships as a single self-contained `index.html` (**~660 KB**), built with Three.js + TypeScript + Vite.
+It ships as a single self-contained `index.html` (**~740 KB**), built with Three.js + TypeScript + Vite.
 
 > Optimization write-up: **[OPTIMIZATION.md](OPTIMIZATION.md)**
 
@@ -10,7 +10,7 @@ It ships as a single self-contained `index.html` (**~660 KB**), built with Three
 ```bash
 npm install
 npm run dev          # http://localhost:5173
-npm run build        # dist/index.html (packed, ~660 KB) + dist/index.uncompressed.html (~1.2 MB)
+npm run build        # dist/index.html (packed, ~740 KB) + dist/index.uncompressed.html (~1.3 MB)
 npm run assets       # rebuild src/assets/gen/ from art-src/ (FBX/PNG -> GLB/WebP + road path)
 npm run typecheck
 ```

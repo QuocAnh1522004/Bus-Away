@@ -1,146 +1,159 @@
-# Optimization report — Bus Away playable
+# Bus Away playable: optimization notes
 
-**Final build: `dist/index.html` = 370.7 KB**, a single file with no external requests.
-It fits every major network limit, including Meta's 2 MB.
+These notes explain how I kept the playable small and fast, and where I chose to spend bytes on
+quality instead. Each variant ships as one HTML file with no external requests.
 
-| | Size |
+| Build | Size |
 | --- | --- |
-| Source art (FBX 968 KB + PNG 750 KB) | 1,718 KB |
-| Runtime assets after the pipeline (GLB + WebP + path JSON) | **161 KB** (−90.6 %) |
-| Single-file build, uncompressed (`index.uncompressed.html`) | 912.4 KB |
-| Single-file build, self-extracting (`index.html`) | **370.7 KB** (−59 % vs uncompressed) |
+| Level 1, packed (`dist/index.html`) | 742.5 KB |
+| Level 2, packed (`dist-level2/index.html`) | 742.4 KB |
+| Either level, uncompressed fallback | about 1.29 MB |
 
-Run `npm run build` to reproduce. `tools/report-size.mjs` prints the breakdown and checks it against each network's limit.
+The smallest network limit I targeted is Meta's 2 MB, so both builds have plenty of headroom.
+`npm run build` and `npm run build:level2` reproduce them, and `tools/report-size.mjs` prints the
+size against each network's limit after every build.
 
----
+## Why Three.js
 
-## 1. Engine choice: Three.js, not Unity or Pixi
+I compared three options before starting:
 
-- **Unity WebGL** ships a multi-MB runtime (wasm + data + loader) before any game content. When inlined
-  as base64 into one HTML file it grows another 33 %, starts slowly and uses a lot of memory on low-end
-  phones. The usual way around that (Luna) needs a licence and setup time.
-- **Pixi.js** is 2D. Buses turn continuously along a curved road under a tilted camera, so faking that
-  needs pre-rendered rotation frames for every bus size and colour. That costs far more bytes than the
-  meshes themselves, and higher resolution means bigger textures.
-- **Three.js** renders the original low-poly meshes. Geometry stays sharp at any device pixel ratio for free,
-  and the whole engine minifies to about 620 KB, which compresses well (see §4).
+- Unity WebGL brings a runtime of several MB before any game content. Inlined as base64 it gets a
+  third bigger again, and it starts slowly on low-end phones. Tools like Luna help, but need a licence
+  and setup time.
+- Pixi.js is 2D. The buses turn smoothly along a curved road under a tilted camera, so in 2D I would
+  need pre-rendered rotation frames for every bus size and colour. That costs more than the 3D meshes.
+- Three.js can render the original low-poly meshes directly. Geometry stays sharp at any screen
+  density, and the minified engine is about 620 KB of text, which compresses well (see "Code size and
+  packing").
 
-No 2D engine is bundled: the UI is plain HTML/CSS (see §3).
+The UI is plain HTML and CSS on top of the canvas, so I didn't need a 2D engine at all.
 
-## 2. Asset pipeline (`npm run assets` → `tools/build-assets.mjs`)
+## Asset pipeline
 
-The art came as a **Cocos Creator 3.8 project**: FBX meshes, PNG textures and custom `.effect` shaders.
-The pipeline is fully scripted and reproducible.
+The art arrived as a Cocos Creator 3.8 project: FBX meshes, PNG textures and custom shaders.
+`npm run assets` (`tools/build-assets.mjs`) converts all of it, so the output can be rebuilt at any time.
 
-### Meshes: 968 KB FBX → 134.6 KB GLB
+### Meshes: about 946 KB of FBX down to a 136 KB GLB
 
-1. **FBX → glTF** with FBX2glTF.
-2. **Merge into one GLB** with glTF-Transform. One request, one decoder pass, shared buffers. The
-   `RootNode` wrappers are flattened and node names are namespaced (`Vehicle_06__Lid`), because
-   GLTFLoader renames duplicates.
-3. **Strip what the shaders never read:**
-   - Embedded materials and texture references are dropped; materials are recreated at runtime.
-   - Vertex colours are dropped.
-   - The stickman's UVs are dropped (its shader is matcap-only).
-   - **Normals are dropped on the road, ground and blob-shadow quads**, which use unlit shaders. That
-     saves a third of the road mesh, the largest asset (5,250 vertices).
-4. **Quantization** (KHR_mesh_quantization): positions/normals → int16, UVs → uint16, skin weights → uint8.
-5. **meshopt compression** (EXT_meshopt_compression, `high` level with octahedral normal filters).
-   The decoder is about 28 KB, which pays for itself several times over.
-6. **Animation baking at 30 fps** (`--anim-framerate bake30`), the clips' authoring rate. FBX2glTF's
-   default 24 fps bake samples between source keys, where the FBX Euler curves flip. That produced leg
-   twist spikes and a −127° knee on the last Walk frame. Then redundant keyframes are removed
-   (`resample`), and Walk is closed back to frame 0 at runtime so it loops seamlessly.
-7. **A free win:** quantization recentres each mesh on its own node. The wheel nodes therefore sit on
-   their axles, so wheels can spin without any re-pivoting.
+1. Convert FBX to glTF with FBX2glTF, then merge everything into one GLB with glTF-Transform, so there
+   is one file and one decode at load.
+2. Remove data the shaders never read: embedded materials (recreated in code), vertex colours, the
+   stickman's UVs, and the normals of the road, ground and shadow meshes, which are drawn unlit. The
+   road is the largest mesh, so dropping its normals alone saved about a third of it.
+3. Quantize vertex data (positions and normals to 16-bit, UVs to 16-bit, skin weights to 8-bit), then
+   compress with meshopt. The meshopt decoder costs about 28 KB and saves much more than that.
+4. Bake the stickman animations at 30 fps, the rate they were authored at. The converter's default of
+   24 fps sampled between keys and produced a twisted knee on the last walk frame.
 
-### Textures: 750 KB PNG → 24.5 KB WebP
+A useful side effect of quantization: each mesh is recentred on its own node, so the wheels already
+sit on their axles and can spin without any extra pivot setup.
 
-Each texture is resized to the resolution the shader actually samples. All are encoded as **lossless WebP
-with `exact` mode**: they are data masks (vehicle tint zones in G/A, road mask in R/G), so lossy
-compression or premultiplied-alpha cleanup would corrupt the channels.
+### Textures: about 732 KB of PNG down to 52 KB of WebP
 
-| Texture | Before | After | Why it's safe |
+Every texture is encoded as lossless WebP in "exact" mode. Several of them are data masks (tint zones,
+road colour selection) rather than pictures, and lossy compression would damage those channels.
+
+| Texture | Source | Shipped | Notes |
 | --- | --- | --- | --- |
-| Matcap 1024² | 536 KB | **6.6 KB** (128²) | Matcap lookups are low-frequency gradients |
-| Asset_Texture 512² | 85 KB | 2.1 KB (64²) | Vertical gradient strips |
-| FakeShadow 512² | 62 KB | 2.6 KB (128²) | Blurred blobs |
-| Vehicle mask 512² | 55 KB | 8.3 KB (256²) | Tint zones + wheel art |
-| Road mask, slot | 10 KB | 4.6 KB | — |
+| Vehicle | 512², 53 KB | 512², 21.9 KB | Kept at full size so bus windows and trims stay crisp |
+| Matcap | 1024², 524 KB | 256², 17.9 KB | Smooth lighting gradient, 256 is enough |
+| FakeShadow | 512², 60 KB | 256², 7.1 KB | Blurred blob; 128 showed slight stepping |
+| Asset_Texture | 512², 83 KB | 64², 2.1 KB | Vertical gradient strips, no visible difference at 64 |
+| Parking slot | 180×318, 7.3 KB | 180×318, 1.6 KB | Full size |
+| Road mask | 64×128, 2.7 KB | 64×128, 0.9 KB | Full size |
 
-`Stripe.png` was unused and is not shipped.
+`Stripe.png` is not used by the game, so it isn't shipped.
 
-### Road placement, measured instead of eyeballed
+### Placing and fitting the road
 
-In the Cocos scene the road prefab carries an offset; FBX2glTF exports each mesh at its own origin.
-The pipeline finds the two road gaps in the lot's front curb (as holes in the x-coverage of the raised
-curb triangles: x = ±4.40, each 2.02 m wide) and the lot edge (z = 1.011). It then moves the road so its
-2.02 m end caps sit in the gaps, flush with the edge (dx = +1.905, dz = −0.719).
+The road model is exported at its own origin, without the offset it had in the Cocos scene. Instead of
+placing it by eye, the pipeline finds the two gaps in the parking lot's front curb and the lot's front
+edge in the mesh data, then moves the road so its ends sit exactly in those gaps.
 
-### Playfield stretched to fit 9:16
+The original loop is tall and narrow, so on a 9:16 phone the road only filled part of the width. The
+pipeline stretches the road, the lot and the bus path horizontally by 1.3 around the same centre, so the
+road ends still line up with the curb gaps. Both shaders are unlit, so the stretch doesn't affect shading.
 
-The art's road loop is narrow next to its own height, so on a 9:16 phone the camera ended up
-height-bound and the road filled only part of the width. The pipeline scales the road, the lot and the
-baked bus path in X by 1.3, all about the same centre, so the road ends stay in the curb gaps. Both
-shaders are unlit, so a non-uniform scale is safe. The layout's aspect now matches portrait phones and
-the road fills the width. On 1:1 screens the camera fit becomes height-bound and everything still fits.
+### Bus path baked at build time
 
-### Baked data instead of runtime work
+The path the buses drive along is computed from the road mesh during the build: trace the outline of the
+asphalt, split it into the left and right edges, and average them. The result is a 1.9 KB JSON file, so
+there was no hand-placed path to maintain and nothing to compute when the game starts.
 
-The **road centerline (bus path)** is computed at build time from the spline mesh: walk the boundary loop
-of the asphalt triangles, cut it at the two end caps into left and right rails, then average them. That
-produces 1.9 KB of JSON. No path editor, no hand-placed waypoints, and nothing to compute at runtime.
+## What is built in code instead of shipped as files
 
-## 3. Zero-byte content
+| Feature | How it's made |
+| --- | --- |
+| Sound effects (tap, boarding, lid, win, lose) | Synthesized with WebAudio from a few oscillators per sound |
+| UI, end card, tap-hint hand | HTML, CSS and inline SVG (about 4 KB of CSS), sharp on any screen |
+| Station counters and the ROAD counter | Drawn on small canvas textures, redrawn only when the number changes |
+| Trees, snowman, signposts | Low-poly geometry generated in code, with trees drawn as one instanced mesh |
+| Road centre dashes | One instanced mesh placed along the baked path |
+| Confetti when a bus fills | One pooled instanced mesh of up to 270 pieces, a single draw call |
+| Level 2's road | Generated in code (see below) |
 
-| Feature | Usual approach | Here |
+Level 2 needed a differently shaped road, but the art pack only has one road model. Rather than ship a
+second mesh, I measured the original road's cross-section (asphalt, curb, snow bank and curb shadow) and
+sweep that profile along a new path made of straight lines and arcs. It shades exactly like the
+original. Every bend is wider than the snow bank, so the banks never fold over. The new road costs a few
+KB of code and no asset data.
+
+## Where I spent bytes on purpose
+
+Some content is worth its size in an ad:
+
+| Asset | Size | Reason |
 | --- | --- | --- |
-| Sound effects | MP3/OGG files (tens of KB each) | **WebAudio synthesis**: a few oscillators per cue, 0 bytes of audio |
-| UI, end card, hand cursor | Sprite atlases + bitmap fonts | **HTML/CSS + inline SVG**: sharp at any DPR, about 4 KB of CSS |
-| Station counters, signposts | Number sprites + sign model | **Canvas-texture digits** on a procedural signpost, redrawn only on change |
-| Trees, snowman | Extra models + textures | **Procedural low-poly geometry** with vertex colours, merged and instanced |
-| Road centre dashes | Texture or extra mesh | One **InstancedMesh** of quads along the baked path |
-| Confetti | Particle textures | CSS animation |
+| Background music (MP3) | 211.6 KB | Trimmed to the 18 s loop and encoded at 96 kbps; music matters for engagement |
+| "Road full" sound effect (MP3) | 4.9 KB | A real recorded sound reads better than a synthesized beep |
+| Game font, Baloo 2 ExtraBold | 11.0 KB | Same look on every phone; cut down to basic letters, numbers and punctuation |
+| End-card logo (WebP) | 15.8 KB | The game's icon |
+| Higher-resolution textures | about +27 KB | Sharper buses and parking spots on high-density phones |
 
-## 4. Code size
+Together these roughly doubled the build compared with an earlier version of about 370 KB. I think the
+difference is worth it, and 742 KB is still about 37% of Meta's limit.
 
-- **Ported shaders instead of three.js built-in materials.** The five Cocos effects (vehicle, asset,
-  road, stickman matcap, fake shadow) plus the silhouette-outline pass are re-implemented as small
-  `ShaderMaterial`s with the same maths. The look matches the source project, and the game never
-  touches lights, shadow maps or PBR.
-- Vite/Rolldown tree-shaking and Terser (3 passes, `drop_console`, no comments). Debug tools sit
-  behind `import.meta.env.DEV` and are removed from production.
-- **Single file** via `vite-plugin-singlefile`. A post step converts the module script into a classic
-  IIFE, because some MRAID webviews ignore `type="module"`.
-- **Self-extracting packer** (`tools/pack.mjs`). Ad networks limit the **raw** file size, not the
-  transfer size, and minified three.js plus base64 assets deflate very well. So the bundle is stored as
-  `base64(deflateRaw(bundle))` with a **3.6 KB inflater** (fflate's `inflateSync` only). At boot it is
-  inflated (a single synchronous pass over ~270 KB; not profiled on devices yet) and injected as a classic script.
-  Result: **912.4 KB → 370.7 KB**.
-  `dist/index.uncompressed.html` is kept for networks whose validators reject runtime script injection.
+## Code size and packing
 
-## 5. Runtime performance
+- The five Cocos shaders (vehicle, prop, road, stickman, fake shadow) and the passenger outline are
+  re-implemented as small custom shaders with the same maths. The game never uses Three.js lights,
+  shadow maps or PBR materials, so that code isn't needed.
+- Vite tree-shaking and Terser minification. Debug tools only exist in the dev server and are removed
+  from the build.
+- Everything is inlined into one HTML file. A small post-build step turns the module script into a
+  classic script, because some ad webviews ignore `type="module"`.
+- Ad networks limit the raw file size, not the download size, and minified code compresses well. So
+  `tools/pack.mjs` stores the bundle as compressed data plus a 3.6 KB decompressor, and unpacks it in one
+  pass when the page loads. This takes the build from about 1.29 MB to 742 KB. The gain is smaller than
+  it was before the music, because MP3 and WebP data are already compressed.
+- The uncompressed version is kept as well, for networks whose validators reject scripts created at
+  runtime.
 
-- About **173 draw calls / 62k triangles** mid-game, 12 shader programs (the passenger silhouette outline accounts for ~58 of the calls). Everything is unlit, so
-  fragment cost is a texture fetch and a few multiply-adds.
-- **Shared materials**: one per prop type and one outline per colour. Buses get their own material
-  *instance* only so the tap flash stays local; it uses the same program, so there's no extra compile.
-- **Instancing** for trees and road dashes.
-- **Seated passengers stop costing CPU and draw calls.** Once seated, their `AnimationMixer` freezes
-  on the Sit pose. When the lid closes they are hidden.
-- **Shader warm-up**: `renderer.compile()` runs before the first visible frame, so the first tap
-  doesn't hitch.
-- **DPR capped at 2**: retina-sharp without paying 9× fill-rate on 3× phones.
-- **Camera fit** to the important points (road, queues, lot) for any aspect ratio: portrait, tablet
-  and landscape all work with no letterboxing logic.
-- Delta time is clamped (no simulation jumps after a tab switch). The game pauses (logic and audio)
-  when hidden or not viewable.
-- Hot paths reuse scratch vectors; arc-length lookups are binary searches.
+## Runtime performance
 
-## 6. How it was verified
+- Mid-game, level 1 draws about 147 calls and 53k triangles, and level 2 about 260 calls and 92k
+  triangles, with 15 shader programs. Everything is unlit, so each pixel is a texture read and a little
+  arithmetic.
+- Materials are shared: one per prop type and one outline per colour. Each bus has its own material
+  instance only so its tap flash doesn't light up other buses; it uses the same shader, so nothing extra
+  is compiled.
+- Seated passengers stop animating once they sit down, and are hidden when the bus lid closes.
+- All shaders are compiled before the first frame, so the first tap doesn't stutter.
+- Rendering resolution is capped at 2× the screen's base resolution. That keeps text and edges sharp
+  without the extra GPU cost of rendering at 3× on high-end phones.
+- The camera fits the playfield to any aspect ratio (portrait, tablet, landscape) without letterboxing.
+- Frame time is clamped so the game doesn't jump after a tab switch, and the game and audio pause when
+  the ad is hidden.
 
-- `?bot` autoplay (fixed-step simulation) finishes the level in **~31 s**. `?bot=bad` loses at **~17 s**.
-  This checks that the level is solvable, that the lose rule works, and that the length fits the brief's
-  30–60 s.
-- Headless screenshots (`tools/shot.mjs`) at 540×960, 768×1024 and 960×540. The **built** file was
-  also loaded from `file://` (packed and uncompressed) to confirm it runs with no server.
+## Testing
+
+- `?bot` plays the level automatically with a fixed time step, and `?bot=bad` plays it badly. Level 1
+  wins in about 30 s and the bad bot loses at about 17 s; level 2 wins in about 44 s and the bad bot
+  loses at about 15 s. This confirms each level can be won, the lose rules work, and the length fits a
+  playable.
+- `?moves=` and `?time=` override the move and time limits to test those lose paths.
+- During development I also ran a temporary check for buses overlapping in the parking lot, and fixed
+  the traffic rules until both levels ran without collisions.
+- I took headless screenshots (`tools/shot.mjs`) in portrait, square and landscape, and opened the built
+  files directly from disk to confirm they run without a server. I haven't profiled on physical phones
+  yet.
