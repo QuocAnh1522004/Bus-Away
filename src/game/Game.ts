@@ -18,6 +18,7 @@ import { World } from './World';
 
 const GAP = 0.55; // bumper-to-bumper distance in traffic
 const BOARD_SPEED = 0.1; // buses crawl at 10% speed while passengers hop on
+const BOARD_FROM = 2.0; // m before a station: start slowing down AND boarding
 const ROAD_SPEED = 7;
 const LOT_SPEED = 6.5;
 const HINT_DELAY = 3.2;
@@ -329,17 +330,17 @@ export class Game {
       await this.tweens.wait(0.085);
     }
     await Promise.all(jumps);
+    // last passenger of this stop is in: back up to speed right away (the lid closes on the move)
+    bus.boarding = false;
+    bus.boardingAt = null;
+    bus.speedScale = 1;
+    this.refreshHint();
     if (bus.full) {
       await bus.closeLid();
       sfx.lid();
       bus.bounce(1);
       this.confetti.burst(bus.root.position.clone().setY(1.0));
-      await this.tweens.wait(0.08);
     }
-    bus.boarding = false;
-    bus.boardingAt = null;
-    bus.speedScale = 1; // back up to speed
-    this.refreshHint();
   }
 
   private async jumpIntoSeat(p: Passenger, bus: Bus, seat: number) {
@@ -439,14 +440,14 @@ export class Game {
       const limit = b.state === 'road' ? limitU : Math.min(limitU + b.path!.length, this.lotLimit(b));
 
       if (b.state === 'road') {
-        // Station decisions a little before arrival (enough to brake smoothly).
+        // Station decisions a little before arrival (enough to brake smoothly). No full stop: the
+        // bus eases down to a crawl and passengers start hopping on right away, on the move.
         this.stations.forEach((st, i) => {
           if (b.visited.has(i)) return;
           const d = st.s - b.s;
-          if (d < 2.6) {
+          if (d < BOARD_FROM) {
             b.visited.add(i);
             if (d > -0.2 && this.canBoard(b, st)) {
-              // no full stop: ease down to a crawl and pick passengers up on the move
               b.boardingAt = st;
               b.speedScale = BOARD_SPEED;
             }
@@ -455,7 +456,8 @@ export class Game {
       }
       b.move(dt, limit);
       const st = b.boardingAt;
-      if (b.state === 'road' && st && !b.boarding && b.s >= st.s - 0.4) {
+      // start as soon as it slows; a second bus queued behind one still boarding here waits its turn
+      if (b.state === 'road' && st && !b.boarding && !this.buses.some((o) => o !== b && o.boarding && o.boardingAt === st)) {
         if (this.canBoard(b, st)) void this.board(b, st);
         else {
           b.boardingAt = null; // the queue head changed colour meanwhile: drive on
