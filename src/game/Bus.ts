@@ -166,6 +166,34 @@ export class Bus {
     );
   }
 
+  /**
+   * Elastic punch scale when a passenger lands in a seat. A damped spring rather than a tween, so
+   * back-to-back landings (every ~0.09 s) stack into one lively wobble instead of restarting it.
+   */
+  punch(amount = 1) {
+    this.punchV += 4.2 * amount; // ~+12% peak for one kick
+  }
+  private punchX = 0;
+  private punchV = 0;
+
+  /** Per-frame juice that isn't a tween (the punch spring). */
+  updateJuice(dt: number) {
+    if (this.punchX === 0 && this.punchV === 0) return;
+    const w = 36; // rad/s: ~0.17 s per wobble
+    const zeta = 0.28;
+    for (let i = 0, h = dt / 2; i < 2; i++) {
+      this.punchV += (-w * w * this.punchX - 2 * zeta * w * this.punchV) * h;
+      this.punchX += this.punchV * h;
+    }
+    if (Math.abs(this.punchX) < 1e-4 && Math.abs(this.punchV) < 1e-3) {
+      this.punchX = this.punchV = 0;
+      this.body.scale.set(1, 1, 1);
+      return;
+    }
+    const f = Math.max(-0.25, Math.min(0.3, this.punchX));
+    this.body.scale.set(1 + f, 1 + f * 1.25, 1 + f);
+  }
+
   /** Side-to-side shake for an invalid tap. */
   shake() {
     void this.tweens.to(

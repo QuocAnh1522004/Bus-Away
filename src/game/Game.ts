@@ -7,6 +7,7 @@ import { ease, lerpAngle, Tweens } from '../engine/tween';
 import { notifyGameEnd } from '../playable/sdk';
 import roadPathData from '../assets/gen/road-path.json';
 import { Bus } from './Bus';
+import { Confetti } from './Confetti';
 import type { Hud } from './Hud';
 import { LEVEL, LOT, type BusDef } from './level';
 import { Models } from './models';
@@ -56,6 +57,7 @@ export class Game {
   /** Exiting buses that still hold the gate arm up. */
   private readonly atGate = new Set<Bus>();
   private lotSeq = 0;
+  private readonly confetti: Confetti;
 
   constructor(
     private readonly stage: Stage,
@@ -67,6 +69,7 @@ export class Game {
     // Baked centerline runs left->right on the authoring axis; reverse it = clockwise on screen.
     this.road = Path.fromXZ(roadPathData.path.slice().reverse());
     this.world = new World(this.root, this.models, assets, this.road, this.tweens);
+    this.confetti = new Confetti(this.root);
     this.entry = this.road.pointAt(0).clone();
     this.exit = this.road.pointAt(this.road.length).clone();
 
@@ -326,6 +329,7 @@ export class Game {
       await bus.closeLid();
       sfx.lid();
       bus.bounce(1);
+      this.confetti.burst(bus.root.position.clone().setY(1.0));
       await this.tweens.wait(0.08);
     }
     bus.boarding = false;
@@ -343,13 +347,18 @@ export class Game {
     p.play('Walk', 0.05);
     this.tweens.kill(p);
     p.moveId++;
+    // Ballistic hop: steady horizontal travel + parabolic height, apex well above both ends so the
+    // arc still reads from the tilted top-down camera. Shrinks to seat size only while dropping in.
+    const dist = Math.hypot(to.x - from.x, to.z - from.z);
+    const apex = Math.max(from.y, to.y) + 1.5 + dist * 0.35;
     await this.tweens.to(
-      0.3,
+      0.42,
       (k) => {
         p.root.position.lerpVectors(from, to, k);
-        p.root.position.y += Math.sin(k * Math.PI) * 1.1;
-        p.root.rotation.y = lerpAngle(h0, h1, k);
-        p.root.scale.setScalar(STAND_SCALE + (SEAT_SCALE - STAND_SCALE) * k);
+        const base = from.y + (to.y - from.y) * k;
+        p.root.position.y = base + 4 * k * (1 - k) * (apex - (from.y + to.y) / 2);
+        p.root.rotation.y = lerpAngle(h0, h1, Math.min(1, k * 2.5));
+        p.root.scale.setScalar(STAND_SCALE + (SEAT_SCALE - STAND_SCALE) * k * k);
       },
       { ease: ease.linear },
     );
@@ -359,7 +368,7 @@ export class Game {
     p.root.scale.setScalar(SEAT_SCALE);
     p.play('Sit', 0.05);
     bus.passengers.push(p);
-    bus.bounce(0.25);
+    bus.punch();
     void this.tweens.wait(0.2).then(() => {
       p.update(0.2);
       p.frozen = true;
@@ -370,11 +379,13 @@ export class Game {
 
   update(dt: number) {
     this.tweens.update(dt);
+    this.confetti.update(dt);
     this.planLot();
     this.updateTraffic(dt);
     for (const b of this.buses) {
       // (toRoad / road buses move in updateTraffic)
       if (b.path && (b.state === 'queued' || b.state === 'toSlot' || b.state === 'exiting')) b.move(dt, this.lotLimit(b));
+      b.updateJuice(dt);
       for (const p of b.passengers) p.update(dt);
     }
     for (const st of this.stations) st.update(dt, this.stage.camera);
