@@ -1,4 +1,5 @@
 import { Vector3, type Camera } from 'three';
+import logoUrl from '../assets/gen/logo.webp?url';
 
 /**
  * UI, fully decoupled from gameplay rendering (DOM over the WebGL canvas):
@@ -60,17 +61,18 @@ const CSS = `
   font:900 56px system-ui,sans-serif;color:#fff;background:linear-gradient(#5fd35a,#2ea33a);box-shadow:0 9px 0 #1d7a28;animation:breathe 1.6s ease-in-out infinite}
 @keyframes breathe{50%{scale:1.07}}
 .frame.land .main-cta{left:auto;right:120px;bottom:110px;translate:none}
-.dim{background:rgba(18,28,58,.62);opacity:0;transition:opacity .35s}
+.dim{background:rgba(0,0,0,.6);opacity:0;transition:opacity .35s}
 .dim.show{opacity:1}
+/* end card: the in-game HUD fades out under the dim (only the logo + CTA stay bright) */
+.frame .top,.frame .tip{transition:opacity .35s}
+.frame.ended .top,.frame.ended .tip,.frame.ended .toast{opacity:0}
 .end{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:44px;opacity:0;transition:opacity .35s}
 .end.show{opacity:1;pointer-events:auto}
-.card{display:flex;flex-direction:column;align-items:center;gap:30px;width:860px;padding:70px 60px;border-radius:60px;background:#fff;color:#2b3a6b;
-  box-shadow:0 15px 0 rgba(0,0,0,.25);transform:scale(.6);transition:transform .45s cubic-bezier(.2,1.6,.4,1)}
-.end.show .card{transform:scale(1)}
-.card h1{margin:0;font-size:92px;font-weight:900}
-.card p{margin:0;font-size:44px;font-weight:700;opacity:.75;text-align:center}
-.card .stars{font-size:110px;letter-spacing:10px;color:#ffc21a}
-.card .cta{position:static;translate:none;font-size:64px;padding:30px 110px}
+.end .logo{width:600px;height:600px;border-radius:120px;pointer-events:auto;cursor:pointer;filter:drop-shadow(0 18px 30px rgba(0,0,0,.45));
+  transform:scale(.6);transition:transform .5s cubic-bezier(.2,1.6,.4,1)}
+.end.show .logo{transform:scale(1);animation:logoBob 2.4s ease-in-out .6s infinite}
+@keyframes logoBob{50%{translate:0 -14px}}
+.end .cta{position:static;translate:none;font-size:64px;padding:30px 120px}
 .confetti{position:absolute;top:-4%;width:20px;height:34px;border-radius:3px;animation:fall linear forwards}
 @keyframes fall{to{transform:translateY(2100px) rotate(720deg)}}
 `;
@@ -108,7 +110,7 @@ export class Hud {
         <div class="tip hide"></div>
         <div class="toast"></div>
         <button class="cta main-cta">PLAY NOW</button>
-        <div class="end"><div class="card"><div class="stars"></div><h1></h1><p></p><button class="cta">PLAY NOW</button></div></div>
+        <div class="end"><img class="logo" alt="" draggable="false" src="${logoUrl}"><button class="cta">PLAY NOW</button></div>
       </div>`;
     document.body.appendChild(el);
     this.el = el;
@@ -122,7 +124,8 @@ export class Hud {
     this.toastEl = el.querySelector('.toast')!;
     this.tipEl = el.querySelector('.tip')!;
     this.end = el.querySelector('.end')!;
-    el.querySelectorAll<HTMLButtonElement>('.cta').forEach((b) =>
+    // PLAY NOW buttons + the end-card logo all open the store
+    el.querySelectorAll<HTMLElement>('.cta, .end .logo').forEach((b) =>
       b.addEventListener('pointerup', (e) => {
         e.stopPropagation();
         this.onCta();
@@ -196,13 +199,10 @@ export class Hud {
   }
 
   showEnd(win: boolean) {
-    const card = this.end.querySelector('.card')!;
-    card.querySelector('.stars')!.textContent = win ? '★★★' : '';
-    card.querySelector('h1')!.textContent = win ? 'Level Complete!' : 'Out of Parking!';
-    card.querySelector('p')!.textContent = win ? 'Every passenger got home on time.' : 'Plan your buses better next time.';
     this.end.classList.add('show');
     this.dim.classList.add('show');
-    this.mainCta.style.display = 'none'; // the card has its own CTA
+    this.frame.classList.add('ended');
+    this.mainCta.style.display = 'none'; // the end card has its own CTA
     this.showHand(null);
     this.showTip(null);
     if (win) this.confetti();

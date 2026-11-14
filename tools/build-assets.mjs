@@ -130,6 +130,23 @@ for (const [file, size, mode] of TEXTURES) {
     .toFile(out);
 }
 
+// ---------------------------------------------------------------- end-card logo
+// art-src/ui/logo-screenshot.png is a store screenshot of the app icon (white margin + drop shadow):
+// crop the icon square (2 px inside its edge, to drop the anti-aliased white fringe) and round the
+// corners with transparency so it sits cleanly on the dimmed game.
+await buildLogo();
+async function buildLogo() {
+  const crop = { left: 31, top: 20, width: 296, height: 296 };
+  const r = Math.round(crop.width * 0.2);
+  const mask = Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="${crop.width}" height="${crop.height}"><rect width="100%" height="100%" rx="${r}" ry="${r}"/></svg>`);
+  await sharp(join(SRC, 'ui', 'logo-screenshot.png'))
+    .extract(crop)
+    .ensureAlpha()
+    .composite([{ input: mask, blend: 'dest-in' }])
+    .webp({ quality: 88, alphaQuality: 90, effort: 6 })
+    .toFile(join(OUT, 'logo.webp'));
+}
+
 rmSync(tmp, { recursive: true, force: true });
 
 // ---------------------------------------------------------------- report
