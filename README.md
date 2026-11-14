@@ -29,8 +29,8 @@ npm run typecheck
 | Not full after a lap -> first free parking slot | `Game.roadEnd` (backs into the slot) |
 | Win: every bus left · Lose: lap finished, not full, no free slot | `Game.checkWin` / `Game.lose` |
 
-Parked buses can be tapped again to do another lap. One level takes about 45–50 s with sensible play
-(`?bot` below plays it in ~48 s; a colour-blind bot loses at ~27 s).
+Parked buses can be tapped again to do another lap. One level takes about 30–35 s with sensible play (buses run at 2× via `SPEED` in [src/game/Bus.ts](src/game/Bus.ts))
+(`?bot` below plays it in ~31 s; a colour-blind bot loses at ~17 s).
 
 **Game feel:** squash-and-stretch on tap, white flash, smooth accel/brake curves, wheel spin, pitch on
 braking, passengers hop into their seats with rising-pitch blips, the lid drops on with a bounce, the gate

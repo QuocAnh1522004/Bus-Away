@@ -71,7 +71,6 @@ const CSS = `
 .card p{margin:0;font-size:44px;font-weight:700;opacity:.75;text-align:center}
 .card .stars{font-size:110px;letter-spacing:10px;color:#ffc21a}
 .card .cta{position:static;translate:none;font-size:64px;padding:30px 110px}
-.retry{pointer-events:auto;cursor:pointer;background:none;border:0;color:#fff;font:800 44px system-ui,sans-serif;text-decoration:underline;opacity:.9}
 .confetti{position:absolute;top:-4%;width:20px;height:34px;border-radius:3px;animation:fall linear forwards}
 @keyframes fall{to{transform:translateY(2100px) rotate(720deg)}}
 `;
@@ -93,7 +92,6 @@ export class Hud {
   private toastTimer = 0;
   private handTarget: Vector3 | null = null;
   onCta: () => void = () => {};
-  onRetry: () => void = () => {};
 
   constructor(capacity: number) {
     const style = document.createElement('style');
@@ -110,8 +108,7 @@ export class Hud {
         <div class="tip hide"></div>
         <div class="toast"></div>
         <button class="cta main-cta">PLAY NOW</button>
-        <div class="end"><div class="card"><div class="stars"></div><h1></h1><p></p><button class="cta">PLAY NOW</button></div>
-          <button class="retry">Try again</button></div>
+        <div class="end"><div class="card"><div class="stars"></div><h1></h1><p></p><button class="cta">PLAY NOW</button></div></div>
       </div>`;
     document.body.appendChild(el);
     this.el = el;
@@ -131,10 +128,6 @@ export class Hud {
         this.onCta();
       }),
     );
-    el.querySelector('.retry')!.addEventListener('pointerup', (e) => {
-      e.stopPropagation();
-      this.onRetry();
-    });
     this.layout();
     window.addEventListener('resize', () => this.layout());
     window.visualViewport?.addEventListener('resize', () => this.layout());
@@ -213,12 +206,6 @@ export class Hud {
     this.showHand(null);
     this.showTip(null);
     if (win) this.confetti();
-  }
-
-  hideEnd() {
-    this.end.classList.remove('show');
-    this.dim.classList.remove('show');
-    this.mainCta.style.display = '';
   }
 
   private confetti() {

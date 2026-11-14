@@ -222,7 +222,7 @@ export class Game {
       path = this.pathFromSlot(from);
     }
     bus.state = 'toRoad';
-    bus.follow(path, { vmax: LOT_SPEED, onEnd: () => this.joinRoad(bus) });
+    bus.follow(path, { vmax: LOT_SPEED, through: true, onEnd: () => this.joinRoad(bus) });
     this.updateHint(false);
   }
 
@@ -231,7 +231,7 @@ export class Game {
   private joinRoad(bus: Bus) {
     bus.state = 'road';
     bus.visited.clear();
-    bus.follow(this.road, { keepSpeed: true, vmax: ROAD_SPEED, onEnd: () => this.roadEnd(bus) });
+    bus.follow(this.road, { keepSpeed: true, through: true, vmax: ROAD_SPEED, onEnd: () => this.roadEnd(bus) });
   }
 
   private roadEnd(bus: Bus) {
@@ -363,6 +363,15 @@ export class Game {
   update(dt: number) {
     this.tweens.update(dt);
     this.updateTraffic(dt);
+    // TMPCHECK
+    { const w = window as unknown as { __hits: string[]; __t: number }; w.__hits ??= []; w.__t = (w.__t ?? 0) + dt;
+      const vis = this.buses.filter((b) => b.root.visible && b.state !== 'gone');
+      const pts = (b: Bus) => { const r = b.root.rotation.y, dx = Math.sin(r), dz = Math.cos(r), p = b.root.position, L = b.halfLen - 0.5;
+        return [-1, -0.5, 0, 0.5, 1].map((k) => [p.x + dx * L * k, p.z + dz * L * k]); };
+      for (let i = 0; i < vis.length; i++) for (let j = i + 1; j < vis.length; j++) {
+        const a = vis[i], b = vis[j]; if (a.state === 'queued' && b.state === 'queued') continue; if (!a.path && !b.path) continue;
+        let m = 9; for (const p of pts(a)) for (const q of pts(b)) m = Math.min(m, Math.hypot(p[0] - q[0], p[1] - q[1]));
+        if (m < 1.0) w.__hits.push(`${w.__t.toFixed(1)} ${a.color}${a.seats}:${a.state} x ${b.color}${b.seats}:${b.state} d=${m.toFixed(2)} @${a.root.position.x.toFixed(1)},${a.root.position.z.toFixed(1)}`); } }
     for (const b of this.buses) {
       if (b.state === 'queued' || b.state === 'toSlot' || b.state === 'exiting') {
         if (b.path) b.move(dt);
@@ -498,15 +507,26 @@ export class Game {
     });
   }
 
+  /**
+   * Column -> road entry, around the parking: along the lower lane to screen-right, up the side lane
+   * between the slots and the road exit, then along the upper lane to screen-left and into the road.
+   */
   private pathFromColumn(from: Vector3) {
     const e = this.entry;
-    if (Math.abs(from.x - e.x) < 0.15) return new Path([from, e.clone()]);
-    // nearest column: one S-curve into the entry lane
-    if (e.x - from.x < 2.2) return this.smoothPath([[from, Z], [new Vector3(e.x, 0, LOT.laneMid + 0.6), Z], [e.clone(), Z]]);
+    const side = LOT.sideLane;
+    const R = 0.95; // corner radius
     const pts: Waypoint[] = [[from, Z]];
-    pts.push([new Vector3(from.x + 0.95, 0, LOT.laneMid), X]);
-    if (e.x - 0.95 - (from.x + 0.95) > 0.3) pts.push([new Vector3(e.x - 0.95, 0, LOT.laneMid), X]);
-    pts.push([new Vector3(e.x, 0, LOT.laneMid + 0.95), Z]);
+    if (from.x - side < 2.2) {
+      // nearest column: one S-curve into the side lane
+      pts.push([new Vector3(side, 0, LOT.laneMid + 0.6), Z]);
+    } else {
+      pts.push([new Vector3(from.x - R, 0, LOT.laneMid), NX]);
+      if (from.x - R - (side + R) > 0.3) pts.push([new Vector3(side + R, 0, LOT.laneMid), NX]);
+      pts.push([new Vector3(side, 0, LOT.laneMid + R), Z]);
+    }
+    pts.push([new Vector3(side, 0, LOT.laneTop - R), Z]);
+    pts.push([new Vector3(side + R, 0, LOT.laneTop), X]);
+    pts.push([new Vector3(e.x - 1.0, 0, LOT.laneTop), X]);
     pts.push([e.clone(), Z]);
     return this.smoothPath(pts);
   }
@@ -542,4 +562,5 @@ export class Game {
 }
 
 const X = new Vector3(1, 0, 0);
+const NX = new Vector3(-1, 0, 0);
 const Z = new Vector3(0, 0, 1);

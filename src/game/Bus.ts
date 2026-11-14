@@ -6,6 +6,9 @@ import type { Models } from './models';
 import { COLORS, type ColorName } from './palette';
 import { SEAT_SCALE, type Passenger } from './Passenger';
 
+/** Global bus speed multiplier (every path: lot, road, parking, gate). */
+export const SPEED = 2;
+
 export type BusState =
   | 'queued' // waiting in a column
   | 'parked' // in a parking slot
@@ -40,6 +43,10 @@ export class Bus {
   /** Stop target along `path` (null = drive to path end). */
   stopAt: number | null = null;
   onPathEnd: (() => void) | null = null;
+  /** Drive through the path end at speed (the next path continues it) instead of braking to a stop. */
+  private through = false;
+  /** Distance overshot past the end of a `through` path, handed to the next path. */
+  private carry = 0;
   private prevV = 0;
 
   // ---- passengers
@@ -81,9 +88,11 @@ export class Bus {
     return out.copy(SEATS[this.seats][index]).setY(SEAT_Y);
   }
 
-  follow(path: Path, opts: { reverse?: boolean; vmax?: number; onEnd?: () => void; keepSpeed?: boolean } = {}) {
+  follow(path: Path, opts: { reverse?: boolean; vmax?: number; onEnd?: () => void; keepSpeed?: boolean; through?: boolean } = {}) {
     this.path = path;
-    this.s = 0;
+    this.s = opts.keepSpeed ? Math.min(this.carry, path.length) : 0;
+    this.carry = 0;
+    this.through = opts.through ?? false;
     if (!opts.keepSpeed) this.v = 0;
     this.reverse = opts.reverse ?? false;
     this.vmax = opts.vmax ?? 7;
@@ -99,25 +108,31 @@ export class Bus {
     const path = this.path;
     if (!path) return;
     const end = path.length;
-    const target = Math.min(this.stopAt ?? end, limit, end);
-    const dist = Math.max(0, target - this.s);
-    const brake = 16;
-    const accel = 11;
-    const vTarget = Math.min(this.vmax, Math.sqrt(2 * brake * dist));
+    // Brake toward the stop / car ahead, and toward the path end unless it continues into another path.
+    const brakeTo = Math.min(this.stopAt ?? (this.through ? Infinity : end), limit);
+    const dist = Math.max(0, brakeTo - this.s);
+    // Same motion curve played SPEED x faster: velocity x SPEED, accel / brake x SPEED^2
+    // (so braking distances, and therefore station stops, are unchanged).
+    const brake = 16 * SPEED * SPEED;
+    const accel = 11 * SPEED * SPEED;
+    const vTarget = Math.min(this.vmax * SPEED, Math.sqrt(2 * brake * dist));
     this.prevV = this.v;
     this.v = Math.min(this.v + accel * dt, vTarget);
-    this.s = Math.max(this.s, Math.min(this.s + this.v * dt, target)); // never roll backwards
+    const next = Math.min(this.s + this.v * dt, brakeTo);
+    this.s = Math.max(this.s, Math.min(next, end)); // never roll backwards
+    this.carry = this.through ? Math.max(0, next - end) : 0;
     if (dist < 1e-3) this.v = 0;
     this.place();
     // wheels + body juice
     const spin = ((this.v * dt) / WHEEL_R) * (this.reverse ? -1 : 1);
     for (const w of this.wheels) w.rotation.x += spin;
     const a = (this.v - this.prevV) / Math.max(dt, 1e-4);
-    this.body.rotation.x += ((-a * 0.006 * (this.reverse ? -1 : 1)) - this.body.rotation.x) * Math.min(1, dt * 10);
+    this.body.rotation.x += ((-a * (0.006 / (SPEED * SPEED)) * (this.reverse ? -1 : 1)) - this.body.rotation.x) * Math.min(1, dt * 10);
     if (this.s >= end - 1e-4 && this.onPathEnd) {
       const cb = this.onPathEnd;
       this.onPathEnd = null;
       cb();
+      if (this.path && this.path !== path) this.place(); // continued: no one-frame stall at the seam
     }
   }
 

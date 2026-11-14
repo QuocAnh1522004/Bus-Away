@@ -139,7 +139,7 @@ produces 1.9 KB of JSON. No path editor, no hand-placed waypoints, and nothing t
 
 ## 6. How it was verified
 
-- `?bot` autoplay (fixed-step simulation) finishes the level in **~48 s**. `?bot=bad` loses at **~27 s**.
+- `?bot` autoplay (fixed-step simulation) finishes the level in **~31 s**. `?bot=bad` loses at **~17 s**.
   This checks that the level is solvable, that the lose rule works, and that the length fits the brief's
   30–60 s.
 - Headless screenshots (`tools/shot.mjs`) at 540×960, 768×1024 and 960×540. The **built** file was

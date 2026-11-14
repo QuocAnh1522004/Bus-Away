@@ -56,6 +56,9 @@ export const LOT = {
   laneTop: -0.3,
   /** Lower lane between parking and the bus columns. */
   laneMid: -5.2,
+  /** Side lane (bus centre x) that column buses take up to the upper lane: midway between the
+   *  screen-rightmost slot edge (x = -3.95) and the road exit (x = -4.4 * STRETCH). */
+  sideLane: (-3.95 - 4.4 * STRETCH) / 2,
   /** Front edge of the bus columns. */
   columnFront: -6.1,
   columnGap: 0.45,

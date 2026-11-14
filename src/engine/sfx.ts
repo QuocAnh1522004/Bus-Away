@@ -46,7 +46,7 @@ class Sfx {
 
   // ------------------------------------------------------------------ music
 
-  /** Start (or restart) the loop from the top. Called on unlock and again after a retry. */
+  /** Start (or restart) the loop from the top. Called on unlock. */
   startMusic() {
     if (!this.bgm || this.musicOn) return;
     this.musicOn = true;

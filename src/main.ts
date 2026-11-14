@@ -32,17 +32,11 @@ async function boot() {
   const stage = new Stage(document.getElementById('app')!, BG_COLOR);
   const hud = new Hud(LEVEL.capacity);
   stage.insets = () => hud.safeInsets(); // gameplay framing stays clear of the UI bars
-  let game = new Game(stage, assets, hud);
+  const game = new Game(stage, assets, hud);
 
   hud.onCta = () => {
     sfx.unlock();
     openStore();
-  };
-  hud.onRetry = () => {
-    hud.hideEnd();
-    game.dispose();
-    game = new Game(stage, assets, hud);
-    sfx.startMusic();
   };
 
   stage.renderer.domElement.addEventListener('pointerdown', (e) => {
