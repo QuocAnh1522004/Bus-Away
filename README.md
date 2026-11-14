@@ -1,7 +1,7 @@
 # Bus Away — Playable Ad (Three.js)
 
 A playable ad for **Bus Away**: send colour-matched buses around a loop to pick up queuing passengers.
-It ships as a single self-contained `index.html` (**~370 KB**), built with Three.js + TypeScript + Vite.
+It ships as a single self-contained `index.html` (**~660 KB**), built with Three.js + TypeScript + Vite.
 
 > Optimization write-up: **[OPTIMIZATION.md](OPTIMIZATION.md)**
 
@@ -10,7 +10,7 @@ It ships as a single self-contained `index.html` (**~370 KB**), built with Three
 ```bash
 npm install
 npm run dev          # http://localhost:5173
-npm run build        # dist/index.html (packed, ~370 KB) + dist/index.uncompressed.html (~910 KB)
+npm run build        # dist/index.html (packed, ~660 KB) + dist/index.uncompressed.html (~1.2 MB)
 npm run assets       # rebuild src/assets/gen/ from art-src/ (FBX/PNG -> GLB/WebP + road path)
 npm run typecheck
 ```
@@ -35,7 +35,13 @@ Parked buses can be tapped again to do another lap. One level takes about 45–5
 **Game feel:** squash-and-stretch on tap, white flash, smooth accel/brake curves, wheel spin, pitch on
 braking, passengers hop into their seats with rising-pitch blips, the lid drops on with a bounce, the gate
 arm swings, the queue shuffles forward, counters pop, hint hand after 3 s idle, confetti end card.
-Sounds and the background music loop are synthesized with WebAudio (no audio files).
+Sound effects are synthesized with WebAudio (no audio files). Background music is an MP3 loop
+([art-src/audio/bgm.mp3](art-src/audio/bgm.mp3)), trimmed of its silent edges and re-encoded at 96 kbps into
+`src/assets/gen/bgm.mp3` (~210 KB):
+
+```bash
+ffmpeg -i art-src/audio/bgm.mp3 -af "atrim=start=0.2065:end=18.1831,asetpts=N/SR/TB" -ar 44100 -c:a libmp3lame -b:a 96k src/assets/gen/bgm.mp3
+```
 
 ## Project layout
 
