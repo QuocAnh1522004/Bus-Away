@@ -38,8 +38,8 @@ const CSS = `
 .rc svg{width:calc(70px*var(--s));height:calc(70px*var(--s))}
 .rc b{font:900 calc(64px*var(--s))/1 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;color:#fff;letter-spacing:.02em;
   -webkit-text-stroke:calc(8px*var(--s)) #163a6b;paint-order:stroke fill;font-variant-numeric:tabular-nums}
-.rc.punch{animation:rcPunch .35s}
-@keyframes rcPunch{0%{scale:1 1}25%{scale:1 1.06}55%{scale:1 .98}80%{scale:1 1.01}100%{scale:1 1}} /* y only, subtle */
+.rc.punch{animation:rcPunch .4s ease-out}
+@keyframes rcPunch{0%{scale:1 1}20%{scale:1 1.15}45%{scale:1 .94}70%{scale:1 1.04}100%{scale:1 1}} /* y only */
 .hand{position:absolute;left:0;top:0;width:calc(150px*var(--s));height:calc(150px*var(--s));opacity:0;transition:opacity .25s;will-change:transform}
 .hand.show{opacity:1}
 .hand svg{width:100%;height:100%;animation:tapAnim 1s ease-in-out infinite;transform-origin:30% 10%;filter:drop-shadow(0 4px 4px rgba(0,0,0,.3))}
