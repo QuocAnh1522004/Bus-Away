@@ -1,4 +1,5 @@
 import bgmUrl from '../assets/gen/bgm.mp3?url';
+import woodBreakUrl from '../assets/gen/wood_break.mp3?url';
 
 /**
  * Procedural sound effects with WebAudio (zero bytes) + an MP3 background-music loop.
@@ -13,6 +14,13 @@ const bgmBytes: Promise<ArrayBuffer | null> = fetch(bgmUrl)
   .catch(() => null);
 const BGM_VOLUME = 0.6; // relative to the SFX master
 
+// Sampled one-shots (art-src/audio/*.wav, trimmed -> src/assets/gen/*.mp3), fetched at boot too.
+const fetchBytes = (url: string): Promise<ArrayBuffer | null> =>
+  fetch(url)
+    .then((r) => r.arrayBuffer())
+    .catch(() => null);
+const SAMPLES = { woodBreak: fetchBytes(woodBreakUrl) };
+
 class Sfx {
   private ctx: AudioContext | null = null;
   private master: GainNode | null = null;
@@ -20,6 +28,7 @@ class Sfx {
   private bgm: Promise<AudioBuffer | null> | null = null;
   private bgmSrc: AudioBufferSourceNode | null = null;
   private musicOn = false;
+  private samples: Partial<Record<keyof typeof SAMPLES, Promise<AudioBuffer | null>>> = {};
   muted = false;
 
   unlock() {
@@ -37,10 +46,11 @@ class Sfx {
     this.music.connect(this.master);
     this.music.gain.value = 0.0001;
     const ctx = this.ctx;
-    this.bgm = bgmBytes.then((bytes) =>
-      // callback form: older Safari has no promise-returning decodeAudioData
-      bytes ? new Promise<AudioBuffer | null>((res) => ctx.decodeAudioData(bytes, res, () => res(null))) : null,
-    );
+    // callback form: older Safari has no promise-returning decodeAudioData
+    const decode = (bytes: ArrayBuffer | null) =>
+      bytes ? new Promise<AudioBuffer | null>((res) => ctx.decodeAudioData(bytes, res, () => res(null))) : null;
+    this.bgm = bgmBytes.then(decode);
+    for (const k of Object.keys(SAMPLES) as (keyof typeof SAMPLES)[]) this.samples[k] = SAMPLES[k].then(decode);
     this.startMusic();
   }
 
@@ -113,6 +123,27 @@ class Sfx {
   tap() {
     this.tone(520, 0.09, { type: 'triangle', slide: 1.6, vol: 0.45 });
   }
+  /** Play a sampled one-shot. */
+  private sample(name: keyof typeof SAMPLES, vol = 1) {
+    const ctx = this.ctx;
+    const p = this.samples[name];
+    if (!ctx || !this.master || !p || this.muted) return;
+    void p.then((buf) => {
+      if (!buf || !this.master) return;
+      const src = ctx.createBufferSource();
+      src.buffer = buf;
+      const g = ctx.createGain();
+      g.gain.value = vol;
+      src.connect(g).connect(this.master);
+      src.start();
+    });
+  }
+
+  /** Bus refused because the road is full. */
+  roadFull() {
+    this.sample('woodBreak', 1.4);
+  }
+
   denied() {
     this.tone(180, 0.12, { type: 'square', vol: 0.18 });
     this.tone(140, 0.14, { type: 'square', vol: 0.18, delay: 0.09 });

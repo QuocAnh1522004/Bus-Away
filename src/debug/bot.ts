@@ -33,7 +33,7 @@ export function runBot(getGame: () => Game, speed: number) {
       return;
     }
     if (st.ended) {
-      document.title = `${st.won ? 'WIN' : 'LOSE'} t=${time.toFixed(1)}s | ${log.join(' ')}`;
+      document.title = `${st.won ? 'WIN' : `LOSE (${st.endReason})`} t=${time.toFixed(1)}s moves left=${st.movesLeft} | ${log.join(' ')}`;
       return;
     }
     if (time >= nextDecision) {

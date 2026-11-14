@@ -51,6 +51,11 @@ export class Game {
     return this.onRoadBuses.length;
   }
   private ended = false;
+  /** Level limits: moves = taps that send a bus out; the timer runs from the first move. */
+  private movesLeft = LEVEL.moves;
+  private timeLeft = LEVEL.time;
+  private timerOn = false;
+  private endReason = '';
   private idle = 0;
   private hintBus: Bus | null = null;
   private readonly entry: Vector3;
@@ -135,6 +140,16 @@ export class Game {
     }
 
     this.syncRoadHud();
+    if (import.meta.env.DEV) {
+      // ?moves=5&time=20 — try other limits without editing level.ts
+      const q = new URLSearchParams(location.search);
+      if (q.has('moves')) this.movesLeft = Number(q.get('moves'));
+      if (q.has('time')) this.timeLeft = Number(q.get('time'));
+    }
+    // ROAD counter in the middle of the level: inside the loop, just above the lot edge
+    hud.setCounterAnchor(new Vector3(0, 0.05, 1.6));
+    hud.setMoves(this.movesLeft, false);
+    hud.setTime(this.timeLeft, false);
     hud.showTip('Tap a bus to pick up its colour!');
     this.updateHint(true);
   }
@@ -182,6 +197,8 @@ export class Game {
     return {
       ended: this.ended,
       won: this.ended && this.buses.every((b) => b.state === 'gone'),
+      endReason: this.endReason,
+      movesLeft: this.movesLeft,
       onRoad: this.onRoad,
       heads: this.stations.map((s) => s.head()),
       remaining: this.stations.map((s) => s.remaining),
@@ -204,16 +221,26 @@ export class Game {
     }
     if (this.onRoad >= LEVEL.capacity) {
       bus.shake();
-      sfx.denied();
+      sfx.roadFull();
       this.hud.warnCapacity();
-      this.hud.toast('The road is full!');
+      this.hud.toast('No more space on road');
       return;
     }
+    if (this.movesLeft <= 0) {
+      bus.shake();
+      sfx.denied();
+      this.hud.toast('No moves left!');
+      return;
+    }
+    // a move = a tap that actually sends a bus (refused taps above are free)
+    this.movesLeft--;
+    this.hud.setMoves(this.movesLeft, this.movesLeft <= 3);
+    this.timerOn = true;
     sfx.tap();
     bus.bounce(0.8);
     bus.flash();
     this.onRoadBuses.push(bus);
-    this.syncRoadHud();
+    this.syncRoadHud(); // the counter punches on the change
 
     const from = bus.root.position.clone();
     let path: Path;
@@ -251,7 +278,7 @@ export class Game {
     bus.afterRoad = true; // the first leg (gate / parking lane) still leads the road queue
     if (bus.full) return this.leaveThroughGate(bus);
     const slot = this.slots.findIndex((s) => s === null);
-    if (slot < 0) return this.lose(bus);
+    if (slot < 0) return this.lose('No free parking slot!', bus);
     this.slots[slot] = bus;
     bus.slot = slot;
     bus.state = 'toSlot';
@@ -391,6 +418,7 @@ export class Game {
   update(dt: number) {
     this.tweens.update(dt);
     this.confetti.update(dt);
+    this.updateLimits(dt);
     this.planLot();
     this.updateTraffic(dt);
     for (const b of this.buses) {
@@ -539,16 +567,37 @@ export class Game {
     setTimeout(() => this.hud.showEnd(true), 500);
   }
 
-  private lose(bus: Bus) {
+  private lose(reason: string, bus?: Bus) {
     if (this.ended) return;
     this.ended = true;
-    bus.state = 'gone';
-    bus.path = null;
-    bus.shake();
+    if (bus) {
+      bus.state = 'gone';
+      bus.path = null;
+      bus.shake();
+    }
+    this.endReason = reason;
+    this.updateHint(false);
     sfx.lose();
-    this.hud.toast('No free parking slot!', 3);
+    this.hud.toast(reason, 3);
     notifyGameEnd();
     setTimeout(() => this.hud.showEnd(false), 900);
+  }
+
+  /**
+   * Timer and moves. Time's up -> lost at once. Out of moves -> the last moves still play out (they
+   * may finish the level); once nothing is driving any more and the level isn't won, it's lost.
+   */
+  private updateLimits(dt: number) {
+    if (this.ended) return;
+    if (this.timerOn) {
+      this.timeLeft = Math.max(0, this.timeLeft - dt);
+      this.hud.setTime(this.timeLeft, this.timeLeft <= 10);
+      if (this.timeLeft <= 0) return this.lose("Time's up!");
+    }
+    if (this.movesLeft <= 0) {
+      const settled = this.buses.every((b) => b.state === 'gone' || b.state === 'parked' || (b.state === 'queued' && !b.path));
+      if (settled && this.buses.some((b) => b.state !== 'gone')) this.lose('Out of moves!');
+    }
   }
 
   // ------------------------------------------------------------------ hints
@@ -560,7 +609,7 @@ export class Game {
 
   /** Hand pointer on a sensible next move (front bus whose colour is wanted at a station). */
   private updateHint(show: boolean) {
-    if (!show || this.ended || this.onRoad >= LEVEL.capacity) {
+    if (!show || this.ended || this.onRoad >= LEVEL.capacity || this.movesLeft <= 0) {
       this.hintBus = null;
       this.hud.showHand(null);
       return;

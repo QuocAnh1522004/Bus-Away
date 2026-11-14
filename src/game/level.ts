@@ -24,6 +24,10 @@ const run = (color: ColorName, n: number): ColorName[] => Array(n).fill(color);
 export const LEVEL = {
   /** Max buses on the road at the same time. */
   capacity: 3,
+  /** Taps that send a bus out. At 0 the level is lost once the road clears without a win. */
+  moves: 20,
+  /** Seconds, counting down from the first tap. At 0 the level is lost. */
+  time: 60,
   /** Columns of buses, front first. x = world x of the column. */
   columns: [
     { x: 3.3, buses: [{ color: 'red', seats: 6 }, { color: 'blue', seats: 4 }, { color: 'green', seats: 10 }] },

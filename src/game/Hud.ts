@@ -31,6 +31,16 @@ const CSS = `
 #ui .frame{position:absolute;left:0;top:0;transform-origin:0 0}
 
 /* ---- world-anchored (sizes follow the frame scale --s) */
+/* ROAD counter (buses on the road / capacity), anchored inside the loop; sizes follow --s */
+.rcount{position:absolute;left:0;top:0;will-change:transform}
+.rc{display:flex;align-items:center;gap:calc(14px*var(--s));height:calc(100px*var(--s));padding:0 calc(34px*var(--s)) 0 calc(22px*var(--s));
+  transform:translate(-50%,-50%);border-radius:calc(24px*var(--s));background:linear-gradient(#3b88e8,#2266cc);
+  box-shadow:inset 0 calc(4px*var(--s)) 0 rgba(255,255,255,.35),inset 0 calc(-7px*var(--s)) 0 rgba(0,0,0,.22),0 calc(6px*var(--s)) calc(12px*var(--s)) rgba(0,0,0,.28)}
+.rc svg{width:calc(70px*var(--s));height:calc(70px*var(--s))}
+.rc b{font:900 calc(64px*var(--s))/1 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;color:#fff;letter-spacing:.02em;
+  -webkit-text-stroke:calc(8px*var(--s)) #163a6b;paint-order:stroke fill;font-variant-numeric:tabular-nums}
+.rc.punch{animation:rcPunch .35s}
+@keyframes rcPunch{0%{scale:1 1}25%{scale:1 1.06}55%{scale:1 .98}80%{scale:1 1.01}100%{scale:1 1}} /* y only, subtle */
 .hand{position:absolute;left:0;top:0;width:calc(150px*var(--s));height:calc(150px*var(--s));opacity:0;transition:opacity .25s;will-change:transform}
 .hand.show{opacity:1}
 .hand svg{width:100%;height:100%;animation:tapAnim 1s ease-in-out infinite;transform-origin:30% 10%;filter:drop-shadow(0 4px 4px rgba(0,0,0,.3))}
@@ -41,7 +51,12 @@ const CSS = `
 @keyframes ring{0%{opacity:.9;transform:scale(.3)}100%{opacity:0;transform:scale(1.3)}}
 
 /* ---- design-resolution frame (px = design pixels) */
-.top{position:absolute;left:0;right:0;top:36px;display:flex;justify-content:center}
+/* top bar (timer · ROAD · moves): kept in the DOM and updated, but hidden by design */
+.top{position:absolute;left:0;right:0;top:36px;display:none;justify-content:center;gap:20px}
+.stat{padding:14px 28px;gap:12px;font-variant-numeric:tabular-nums}
+.stat b{font-weight:900;min-width:1.6em;text-align:center}
+.stat.low{background:rgba(232,48,58,.92);animation:pulse .8s ease-in-out infinite}
+@keyframes pulse{50%{scale:1.08}}
 .pill{display:flex;align-items:center;gap:16px;padding:14px 34px;border-radius:999px;background:rgba(32,46,86,.82);
   box-shadow:0 6px 0 rgba(0,0,0,.18);font-weight:800;font-size:44px;letter-spacing:.02em}
 .cap{display:flex;gap:10px}
@@ -54,9 +69,9 @@ const CSS = `
   background:rgba(32,46,86,.88);font-weight:900;font-size:46px;white-space:nowrap;transition:opacity .3s;animation:bob 1.4s ease-in-out infinite}
 .tip.hide{opacity:0}
 @keyframes bob{50%{transform:translate(-50%,-8px)}}
-.toast{position:absolute;left:50%;top:250px;transform:translate(-50%,-20px);opacity:0;transition:.25s;padding:16px 44px;border-radius:999px;
-  background:rgba(232,48,58,.95);font-weight:800;font-size:42px;white-space:nowrap}
-.toast.show{opacity:1;transform:translate(-50%,0)}
+.toast{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%) scale(.85);opacity:0;transition:.25s;padding:22px 56px;border-radius:999px;
+  background:rgba(0,0,0,.82);font-weight:800;font-size:48px;white-space:nowrap}
+.toast.show{opacity:1;transform:translate(-50%,-50%) scale(1)}
 .cta{position:absolute;left:50%;bottom:56px;translate:-50% 0;pointer-events:auto;cursor:pointer;border:0;padding:26px 96px;border-radius:999px;
   font:900 56px system-ui,sans-serif;color:#fff;background:linear-gradient(#5fd35a,#2ea33a);box-shadow:0 9px 0 #1d7a28;animation:breathe 1.6s ease-in-out infinite}
 @keyframes breathe{50%{scale:1.07}}
@@ -68,6 +83,8 @@ const CSS = `
 .frame.ended .top,.frame.ended .tip,.frame.ended .toast{opacity:0}
 .end{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:44px;opacity:0;transition:opacity .35s}
 .end.show{opacity:1;pointer-events:auto}
+/* hidden end card must not swallow taps (its logo / button would open the store mid-game) */
+.end:not(.show),.end:not(.show) *{pointer-events:none!important}
 .end .logo{width:600px;height:600px;border-radius:120px;pointer-events:auto;cursor:pointer;filter:drop-shadow(0 18px 30px rgba(0,0,0,.45));
   transform:scale(.6);transition:transform .5s cubic-bezier(.2,1.6,.4,1)}
 .end.show .logo{transform:scale(1);animation:logoBob 2.4s ease-in-out .6s infinite}
@@ -76,6 +93,8 @@ const CSS = `
 .confetti{position:absolute;top:-4%;width:20px;height:34px;border-radius:3px;animation:fall linear forwards}
 @keyframes fall{to{transform:translateY(2100px) rotate(720deg)}}
 `;
+
+const BUS_SVG = `<svg viewBox="0 0 48 48" stroke="#163a6b" stroke-width="3" stroke-linejoin="round"><rect x="3" y="12" width="6" height="10" rx="2.5" fill="#fff"/><rect x="39" y="12" width="6" height="10" rx="2.5" fill="#fff"/><rect x="11" y="37" width="8" height="8" rx="2.5" fill="#fff"/><rect x="29" y="37" width="8" height="8" rx="2.5" fill="#fff"/><rect x="8" y="4" width="32" height="36" rx="8" fill="#fff"/><rect x="13" y="10" width="22" height="13" rx="3" fill="#2a6fd6" stroke-width="2.5"/><circle cx="16" cy="32" r="2.6" fill="#2a6fd6" stroke="none"/><circle cx="32" cy="32" r="2.6" fill="#2a6fd6" stroke="none"/></svg>`;
 
 const HAND_SVG = `<svg viewBox="0 0 64 64"><path fill="#fff" stroke="#2b3a6b" stroke-width="3" stroke-linejoin="round"
  d="M20 6c3 0 5 2 5 5v17l2-1c3-1 5 0 6 2l1 2 2-1c3-1 5 0 6 2v1l2-1c3-1 6 1 6 4v12c0 9-6 15-15 15h-3c-6 0-10-3-13-8L10 40c-2-3-1-6 2-7 2-1 4 0 6 2l2 3V11c0-3 0-5 0-5z"/></svg>`;
@@ -95,7 +114,11 @@ export class Hud {
   private handTarget: Vector3 | null = null;
   onCta: () => void = () => {};
 
-  constructor(capacity: number) {
+  private readonly counter: HTMLDivElement;
+  private readonly counterText: HTMLElement;
+  private counterAnchor: Vector3 | null = null;
+
+  constructor(private readonly capacity: number) {
     const style = document.createElement('style');
     style.textContent = CSS;
     document.head.appendChild(style);
@@ -103,10 +126,10 @@ export class Hud {
     const el = document.createElement('div');
     el.id = 'ui';
     el.innerHTML = `
-      <div class="world"><div class="hand"><div class="ring"></div>${HAND_SVG}</div></div>
+      <div class="world"><div class="rcount"><div class="rc">${BUS_SVG}<b></b></div></div><div class="hand"><div class="ring"></div>${HAND_SVG}</div></div>
       <div class="dim"></div>
       <div class="frame">
-        <div class="top"><div class="pill cap-pill">ROAD <div class="cap"></div></div></div>
+        <div class="top"><div class="pill stat timer-pill"><svg viewBox="0 0 24 24" width="44" height="44"><circle cx="12" cy="13" r="9" fill="none" stroke="#fff" stroke-width="2.6"/><path d="M12 8v5l3 2" fill="none" stroke="#fff" stroke-width="2.6" stroke-linecap="round"/><path d="M9 2.5h6" stroke="#fff" stroke-width="2.6" stroke-linecap="round"/></svg><b class="timer"></b></div><div class="pill cap-pill">ROAD <div class="cap"></div></div><div class="pill stat moves-pill">MOVES <b class="moves"></b></div></div>
         <div class="tip hide"></div>
         <div class="toast"></div>
         <button class="cta main-cta">PLAY NOW</button>
@@ -121,6 +144,9 @@ export class Hud {
     const cap = el.querySelector('.cap')!;
     for (let i = 0; i < capacity; i++) this.capCells.push(cap.appendChild(document.createElement('i')));
     this.hand = el.querySelector('.hand')!;
+    this.counter = el.querySelector('.rc')!;
+    this.counterText = this.counter.querySelector('b')!;
+    this.counterText.textContent = `0/${capacity}`;
     this.toastEl = el.querySelector('.toast')!;
     this.tipEl = el.querySelector('.tip')!;
     this.end = el.querySelector('.end')!;
@@ -168,6 +194,11 @@ export class Hud {
 
   /** Road slots: `colors[i]` (hex) is the bus in slot i; missing entries are free slots. */
   setRoad(colors: number[]) {
+    const txt = `${colors.length}/${this.capacity}`;
+    if (this.counterText.textContent !== txt) {
+      this.counterText.textContent = txt;
+      this.punchCounter(); // punch on every change (bus sent out / bus left the road)
+    }
     this.capCells.forEach((c, i) => {
       const col = colors[i];
       c.classList.toggle('on', col !== undefined);
@@ -175,7 +206,40 @@ export class Hud {
     });
   }
 
+  /** Moves left (pill turns red and pulses when low). */
+  setMoves(n: number, low: boolean) {
+    const el = this.el.querySelector('.moves')!;
+    if (el.textContent !== String(n)) el.textContent = String(n);
+    this.el.querySelector('.moves-pill')!.classList.toggle('low', low);
+  }
+
+  /** Countdown in seconds (shown m:ss; pill turns red and pulses when low). */
+  setTime(seconds: number, low: boolean) {
+    const t = Math.max(0, Math.ceil(seconds));
+    const txt = `${Math.floor(t / 60)}:${String(t % 60).padStart(2, '0')}`;
+    const el = this.el.querySelector('.timer')!;
+    if (el.textContent !== txt) el.textContent = txt;
+    this.el.querySelector('.timer-pill')!.classList.toggle('low', low);
+  }
+
+  /** Where the ROAD counter sits in the world (projected every frame). */
+  setCounterAnchor(p: Vector3) {
+    this.counterAnchor = p;
+  }
+
+  /** Punch-scale the ROAD counter (a bus was sent out). */
+  punchCounter() {
+    this.restartAnim(this.counter, 'punch');
+  }
+
+  private restartAnim(el: HTMLElement, cls: string) {
+    el.classList.remove(cls);
+    void el.offsetWidth; // restart the animation
+    el.classList.add(cls);
+  }
+
   warnCapacity() {
+    this.restartAnim(this.counter, 'punch');
     this.capPill.classList.remove('warn');
     void this.capPill.offsetWidth; // restart animation
     this.capPill.classList.add('warn');
@@ -203,6 +267,8 @@ export class Hud {
     this.dim.classList.add('show');
     this.frame.classList.add('ended');
     this.mainCta.style.display = 'none'; // the end card has its own CTA
+    this.toastTimer = 0;
+    this.toastEl.classList.remove('show'); // never peeks out behind the end card
     this.showHand(null);
     this.showTip(null);
     if (win) this.confetti();
@@ -225,6 +291,10 @@ export class Hud {
   /** Per-frame: project the hint hand's 3D anchor into the world layer, tick the toast. */
   update(dt: number, camera: Camera, w: number, h: number) {
     if (window.innerWidth !== this.laidOut.w || window.innerHeight !== this.laidOut.h) this.layout(); // missed resize event
+    if (this.counterAnchor) {
+      const p = v.copy(this.counterAnchor).project(camera);
+      (this.counter.parentElement as HTMLElement).style.transform = `translate(${((p.x + 1) / 2) * w}px,${((1 - p.y) / 2) * h}px)`;
+    }
     if (this.handTarget) {
       const p = v.copy(this.handTarget).project(camera);
       this.hand.style.transform = `translate(${((p.x + 1) / 2) * w}px,${((1 - p.y) / 2) * h}px) translate(-22%,-8%)`;

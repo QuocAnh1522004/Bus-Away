@@ -201,16 +201,19 @@ export class Bus {
     this.body.scale.set(1 + f, 1 + f * 1.25, 1 + f);
   }
 
-  /** Side-to-side shake for an invalid tap. */
+  /** Wiggle left / right (sideways slide + a little yaw) for a refused tap. */
   shake() {
     void this.tweens.to(
-      0.35,
+      0.4,
       (k) => {
-        this.body.rotation.z = Math.sin(k * Math.PI * 6) * 0.08 * (1 - k);
+        const w = Math.sin(k * Math.PI * 6) * (1 - k);
+        this.body.position.x = w * 0.16;
+        this.body.rotation.y = w * 0.1;
       },
-      { ease: ease.linear },
+      { ease: ease.linear, owner: this.wiggleOwner },
     );
   }
+  private readonly wiggleOwner = {};
 
   /** White flash (vehicle shader `flash` uniform is per material = per colour, so tween briefly). */
   flash() {

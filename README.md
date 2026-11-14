@@ -21,7 +21,7 @@ npm run typecheck
 | --- | --- |
 | Buses wait in columns, one colour each, 4 / 6 / 10 seats | `LEVEL.columns` in [src/game/level.ts](src/game/level.ts); models `Vehicle_04/06/10` |
 | Only the **front** bus of a column can go; tap to send it | `Game.tryLaunch` (non-front -> shake + toast) |
-| Max buses on the road = **CAPACITY** | `LEVEL.capacity` (3). The HUD "ROAD" pill has one slot per CAPACITY, filled with the colour of the bus using it; refused taps flash it |
+| Max buses on the road = **CAPACITY** | `LEVEL.capacity` (3). A bus-icon counter inside the loop shows buses on the road / CAPACITY (punches on every send; a refused tap wiggles the bus, plays a wood-break sound and flashes the counter) |
 | Stations spawn passengers in a single queue | `Station`: the line leaves the road and curls away; passengers walk out of the tunnel at the tail; a signpost at the head shows how many are left |
 | A passenger boards only if: head of queue + same colour + free seat | `Game.canBoard` / `Game.board` |
 | Buses drive clockwise and stop only when they can board | `Game.updateTraffic` (decides ~2.6 m before the stop, brakes smoothly) |
@@ -71,7 +71,7 @@ The UI is a DOM layer (`#ui`) fully decoupled from the WebGL canvas
   ([src/game/Counter.ts](src/game/Counter.ts), a 256×128 canvas texture redrawn only on change),
   so passengers walking in front of a sign correctly hide it.
 - `.frame`: a **design-resolution container**, 1080×1920 in portrait and 3413×1920 in landscape.
-  It is uniformly scaled to fit and centred. All HUD layout (ROAD pill, tip, toast, PLAY NOW, end card)
+  It is uniformly scaled to fit and centred. All HUD layout (tip, toast, PLAY NOW, end card)
   is in design pixels, so it looks identical on any aspect ratio. The CTA is bottom-centre in portrait
   and bottom-right in landscape.
 - `Hud.safeInsets()` reports the screen bands the HUD occupies. The 3D camera fit
@@ -81,6 +81,7 @@ The UI is a DOM layer (`#ui`) fully decoupled from the WebGL canvas
 
 - `?bot&speed=4` plays the level automatically and writes the result into `document.title`.
   `?bot=bad` plays badly, to exercise the lose path. `&snap=12` freezes the sim at t = 12 s.
+- `?moves=8&time=20` overrides the level's move / time limits (`LEVEL.moves`, `LEVEL.time` in [src/game/level.ts](src/game/level.ts)).
 - `?cam=x,y,z,tx,ty,tz` overrides the camera for close-up inspection.
 - `?tilt=54&fov=32` tries other camera angles. `?measure` writes the on-screen scale (px per metre at the
   buses and at the road) into `document.title`. The 54° default was picked this way on 9:16.
