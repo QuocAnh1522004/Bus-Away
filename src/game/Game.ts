@@ -17,6 +17,7 @@ import { Station } from './Station';
 import { World } from './World';
 
 const GAP = 0.55; // bumper-to-bumper distance in traffic
+const BOARD_SPEED = 0.1; // buses crawl at 10% speed while passengers hop on
 const ROAD_SPEED = 7;
 const LOT_SPEED = 6.5;
 const HINT_DELAY = 3.2;
@@ -185,7 +186,7 @@ export class Game {
       remaining: this.stations.map((s) => s.remaining),
       tappable: [...this.columns.map((c) => c[0]).filter(Boolean), ...this.slots.filter(Boolean)] as Bus[],
       slotsFree: this.slots.filter((s) => s === null).length,
-      buses: this.buses.map((b) => `${b.color}${b.seats}:${b.state}:${b.reserved}` + (b.path ? `[s=${b.s.toFixed(2)}/${b.path.length.toFixed(2)} v=${b.v.toFixed(2)} stop=${b.stopAt}]` : '')),
+      buses: this.buses.map((b) => `${b.color}${b.seats}:${b.state}:${b.reserved}` + (b.path ? `[s=${b.s.toFixed(2)}/${b.path.length.toFixed(2)} v=${b.v.toFixed(2)} slow=${b.speedScale}]` : '')),
     };
   }
 
@@ -226,6 +227,7 @@ export class Game {
       path = this.pathFromSlot(from);
     }
     bus.state = 'toRoad';
+    bus.afterRoad = false; // may be re-sent while still pulling into its slot
     bus.lotSeq = ++this.lotSeq;
     bus.follow(path, { vmax: LOT_SPEED, through: true, onEnd: () => this.joinRoad(bus) });
     this.updateHint(false);
@@ -236,6 +238,8 @@ export class Game {
   private joinRoad(bus: Bus) {
     bus.state = 'road';
     bus.visited.clear();
+    bus.boardingAt = null;
+    bus.speedScale = 1;
     bus.follow(this.road, { keepSpeed: true, through: true, vmax: ROAD_SPEED, onEnd: () => this.roadEnd(bus) });
   }
 
@@ -333,17 +337,22 @@ export class Game {
       await this.tweens.wait(0.08);
     }
     bus.boarding = false;
-    bus.stopAt = null;
+    bus.boardingAt = null;
+    bus.speedScale = 1; // back up to speed
     this.refreshHint();
   }
 
   private async jumpIntoSeat(p: Passenger, bus: Bus, seat: number) {
     const from = p.root.position.clone();
     const local = bus.seatLocal(seat);
-    bus.body.updateWorldMatrix(true, false);
-    const to = bus.body.localToWorld(local.clone());
+    // the bus keeps crawling while boarding: aim at where the seat is *now*, every frame
+    const to = new Vector3();
+    const seatNow = () => {
+      bus.body.updateWorldMatrix(true, false);
+      return bus.body.localToWorld(to.copy(local));
+    };
+    seatNow();
     const h0 = p.root.rotation.y;
-    const h1 = bus.root.rotation.y;
     p.play('Walk', 0.05);
     this.tweens.kill(p);
     p.moveId++;
@@ -354,10 +363,11 @@ export class Game {
     await this.tweens.to(
       0.42,
       (k) => {
+        seatNow();
         p.root.position.lerpVectors(from, to, k);
         const base = from.y + (to.y - from.y) * k;
         p.root.position.y = base + 4 * k * (1 - k) * (apex - (from.y + to.y) / 2);
-        p.root.rotation.y = lerpAngle(h0, h1, Math.min(1, k * 2.5));
+        p.root.rotation.y = lerpAngle(h0, bus.root.rotation.y, Math.min(1, k * 2.5));
         p.root.scale.setScalar(STAND_SCALE + (SEAT_SCALE - STAND_SCALE) * k * k);
       },
       { ease: ease.linear },
@@ -435,15 +445,22 @@ export class Game {
           const d = st.s - b.s;
           if (d < 2.6) {
             b.visited.add(i);
-            if (d > -0.2 && this.canBoard(b, st)) b.stopAt = st.s;
+            if (d > -0.2 && this.canBoard(b, st)) {
+              // no full stop: ease down to a crawl and pick passengers up on the move
+              b.boardingAt = st;
+              b.speedScale = BOARD_SPEED;
+            }
           }
         });
       }
       b.move(dt, limit);
-      if (b.state === 'road' && b.stopAt !== null && !b.boarding && Math.abs(b.s - b.stopAt) < 1e-3) {
-        const st = this.stations.find((s) => Math.abs(s.s - b.stopAt!) < 1e-3)!;
+      const st = b.boardingAt;
+      if (b.state === 'road' && st && !b.boarding && b.s >= st.s - 0.4) {
         if (this.canBoard(b, st)) void this.board(b, st);
-        else b.stopAt = null;
+        else {
+          b.boardingAt = null; // the queue head changed colour meanwhile: drive on
+          b.speedScale = 1;
+        }
       }
     }
   }

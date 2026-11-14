@@ -5,6 +5,7 @@ import { BUS_LEN, SEATS, SEAT_Y, type BusDef, type Seats } from './level';
 import type { Models } from './models';
 import { COLORS, type ColorName } from './palette';
 import { SEAT_SCALE, type Passenger } from './Passenger';
+import type { Station } from './Station';
 
 /** Global bus speed multiplier (every path: lot, road, parking, gate). */
 export const SPEED = 2;
@@ -46,6 +47,10 @@ export class Bus {
   reverse = false;
   /** Stop target along `path` (null = drive to path end). */
   stopAt: number | null = null;
+  /** Station this bus is slowing down for / boarding at (on the road). */
+  boardingAt: Station | null = null;
+  /** Speed multiplier (eased to with the normal brake / accel), e.g. 0.1 while boarding on the move. */
+  speedScale = 1;
   onPathEnd: (() => void) | null = null;
   /** Drive through the path end at speed (the next path continues it) instead of braking to a stop. */
   private through = false;
@@ -124,9 +129,11 @@ export class Bus {
     // Brake toward the stop / car ahead, and toward the path end unless it continues into another path.
     const brakeTo = Math.min(this.stopAt ?? (this.through ? Infinity : end), limit);
     const dist = Math.max(0, brakeTo - this.s);
-    const vTarget = Math.min(this.vmax * SPEED, Math.sqrt(2 * BRAKE * dist));
+    const vStop = Math.sqrt(2 * BRAKE * dist);
+    const vCap = this.vmax * SPEED * this.speedScale;
     this.prevV = this.v;
-    this.v = Math.min(this.v + ACCEL * dt, vTarget);
+    // accelerate toward the cap, ease down to a lowered cap at brake rate, never past the stop curve
+    this.v = Math.min(this.v + ACCEL * dt, Math.max(vCap, this.v - BRAKE * dt), vStop);
     const next = Math.min(this.s + this.v * dt, brakeTo);
     this.s = Math.max(this.s, Math.min(next, end)); // never roll backwards
     this.carry = this.through ? Math.max(0, next - end) : 0;
