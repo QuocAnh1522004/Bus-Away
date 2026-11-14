@@ -35,8 +35,7 @@ export class Counter {
         void main() { gl_FragColor = vec4(texture2D(map, vUv).rgb, 1.0); }
       `,
     });
-    this.mesh = new Mesh(new PlaneGeometry(width, height), mat);
-    this.mesh.rotation.y = Math.PI; // face -Z, toward the camera
+    this.mesh = new Mesh(new PlaneGeometry(width, height), mat); // faces +Z, like the sign board
   }
 
   set(n: number) {

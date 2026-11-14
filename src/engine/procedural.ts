@@ -46,18 +46,19 @@ export function pineGeometry() {
   ]);
 }
 
-/** Counter signpost: pole + framed screen (the number is a DOM label drawn on the screen). */
+/**
+ * Counter signpost, in two parts: the pole stays upright, the board (framed screen, centred at the
+ * origin, facing +Z) is turned toward the camera every frame so the number is always readable.
+ */
 export const SIGN_BOARD = { w: 1.95, h: 1.045, y: 1.45 }; // screen = (w-0.14) x (h-0.14) = 2:1
-export function signpostGeometry() {
-  const { w, h, y } = SIGN_BOARD;
-  const frame = new BoxGeometry(w, h, 0.12);
+export function signPoleGeometry() {
+  return merge([colored(new CylinderGeometry(0.05, 0.06, SIGN_BOARD.y, 8), 0x3a4766, SIGN_BOARD.y / 2)]);
+}
+export function signBoardGeometry() {
+  const { w, h } = SIGN_BOARD;
   const screen = new BoxGeometry(w - 0.14, h - 0.14, 0.02);
-  screen.translate(0, 0, -0.065); // faces -Z (toward the camera)
-  return merge([
-    colored(new CylinderGeometry(0.05, 0.06, y, 8), 0x3a4766, y / 2),
-    colored(frame, 0xdfe6f5, y),
-    colored(screen, 0x2b3a6b, y),
-  ]);
+  screen.translate(0, 0, 0.065);
+  return merge([colored(new BoxGeometry(w, h, 0.12), 0xdfe6f5), colored(screen, 0x2b3a6b)]);
 }
 
 /** Snowman: three spheres + carrot nose. */

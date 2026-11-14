@@ -10,6 +10,7 @@ import { Bus } from './Bus';
 import type { Hud } from './Hud';
 import { LEVEL, LOT, type BusDef } from './level';
 import { Models } from './models';
+import { COLORS } from './palette';
 import { SEAT_SCALE, STAND_SCALE, type Passenger } from './Passenger';
 import { Station } from './Station';
 import { World } from './World';
@@ -41,7 +42,11 @@ export class Game {
   private readonly columns: Bus[][] = [];
   private readonly slots: (Bus | null)[] = LEVEL.slots.map(() => null);
   private readonly buses: Bus[] = [];
-  private onRoad = 0;
+  /** Buses heading to or driving on the road, in entry order (CAPACITY counts these). */
+  private readonly onRoadBuses: Bus[] = [];
+  private get onRoad() {
+    return this.onRoadBuses.length;
+  }
   private ended = false;
   private idle = 0;
   private hintBus: Bus | null = null;
@@ -100,7 +105,7 @@ export class Game {
     }
     stage.frame(pts);
 
-    hud.setCapacity(0);
+    this.syncRoadHud();
     hud.showTip('Tap a bus to pick up its colour!');
     this.updateHint(true);
   }
@@ -178,8 +183,8 @@ export class Game {
     sfx.tap();
     bus.bounce(0.8);
     bus.flash();
-    this.onRoad++;
-    this.hud.setCapacity(this.onRoad);
+    this.onRoadBuses.push(bus);
+    this.syncRoadHud();
 
     const from = bus.root.position.clone();
     let path: Path;
@@ -207,8 +212,8 @@ export class Game {
   }
 
   private roadEnd(bus: Bus) {
-    this.onRoad--;
-    this.hud.setCapacity(this.onRoad);
+    this.onRoadBuses.splice(this.onRoadBuses.indexOf(bus), 1);
+    this.syncRoadHud();
     if (bus.full) return this.leaveThroughGate(bus);
     const slot = this.slots.findIndex((s) => s === null);
     if (slot < 0) return this.lose(bus);
@@ -264,6 +269,11 @@ export class Game {
         this.checkWin();
       },
     });
+  }
+
+  /** ROAD pill: one slot per CAPACITY, filled with the colour of the bus using it. */
+  private syncRoadHud() {
+    this.hud.setRoad(this.onRoadBuses.map((b) => COLORS[b.color]));
   }
 
   private canBoard(bus: Bus, st: Station) {
@@ -336,7 +346,7 @@ export class Game {
       }
       for (const p of b.passengers) p.update(dt);
     }
-    for (const st of this.stations) st.update(dt);
+    for (const st of this.stations) st.update(dt, this.stage.camera);
     for (const b of this.atGate) {
       // lower the arm once the bus is clear of it
       if (b.root.position.x < LOT.gate.x - b.halfLen - 0.8) {

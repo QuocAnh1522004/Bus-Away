@@ -21,7 +21,7 @@ npm run typecheck
 | --- | --- |
 | Buses wait in columns, one colour each, 4 / 6 / 10 seats | `LEVEL.columns` in [src/game/level.ts](src/game/level.ts); models `Vehicle_04/06/10` |
 | Only the **front** bus of a column can go; tap to send it | `Game.tryLaunch` (non-front -> shake + toast) |
-| Max buses on the road = **CAPACITY** | `LEVEL.capacity` (3), HUD "ROAD" pill, refused taps flash it |
+| Max buses on the road = **CAPACITY** | `LEVEL.capacity` (3). The HUD "ROAD" pill has one slot per CAPACITY, filled with the colour of the bus using it; refused taps flash it |
 | Stations spawn passengers in a single queue | `Station`: the line leaves the road and curls away; passengers walk out of the tunnel at the tail; a signpost at the head shows how many are left |
 | A passenger boards only if: head of queue + same colour + free seat | `Game.canBoard` / `Game.board` |
 | Buses drive clockwise and stop only when they can board | `Game.updateTraffic` (decides ~2.6 m before the stop, brakes smoothly) |

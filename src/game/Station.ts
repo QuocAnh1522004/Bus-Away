@@ -1,6 +1,6 @@
-import { Group, Mesh, Vector3, type Material, type Object3D } from 'three';
+import { Group, Mesh, Vector3, type Camera, type Material, type Object3D } from 'three';
 import { Path } from '../engine/path';
-import { SIGN_BOARD, signpostGeometry } from '../engine/procedural';
+import { SIGN_BOARD, signBoardGeometry, signPoleGeometry } from '../engine/procedural';
 import { ease, lerpAngle, type Tweens } from '../engine/tween';
 import { Counter } from './Counter';
 import type { StationDef } from './level';
@@ -25,6 +25,8 @@ export class Station {
   readonly tunnel: Object3D;
   /** Top of the signpost (camera framing). */
   readonly signTop = new Vector3();
+  /** Sign board (frame + screen + counter); turned toward the camera every frame. */
+  private readonly board = new Group();
   /** Passengers-left counter, drawn in 3D on the sign's screen. */
   private readonly counter = new Counter(SIGN_BOARD.w - 0.14, SIGN_BOARD.h - 0.14);
   queue: Passenger[] = [];
@@ -52,19 +54,20 @@ export class Station {
     const at = (out: number, along: number) => c.clone().addScaledVector(n, out).addScaledVector(t, along);
     this.line = Path.bezier(at(HEAD_OFFSET, 0), at(HEAD_OFFSET + 1.5, 0), at(HEAD_OFFSET + 2.3, 0.6 * bend), at(HEAD_OFFSET + 2.5, 2.4 * bend), 24);
 
-    // Counter signpost between the head of the line and the road, screen facing the camera.
-    const sign = new Mesh(signpostGeometry(), propMaterial);
+    // Counter signpost between the head of the line and the road.
+    const sign = new Mesh(signPoleGeometry(), propMaterial);
     sign.position.copy(at(SIGN_OFFSET, -0.8 * bend));
     this.group.add(sign);
-    this.counter.mesh.position.set(0, SIGN_BOARD.y, -0.08); // just in front of the screen face
-    sign.add(this.counter.mesh);
+    this.board.add(new Mesh(signBoardGeometry(), propMaterial));
+    this.counter.mesh.position.z = 0.08; // just in front of the screen face
+    this.board.add(this.counter.mesh);
+    this.board.position.copy(sign.position).setY(SIGN_BOARD.y);
+    this.group.add(this.board);
     this.signTop.copy(sign.position).setY(SIGN_BOARD.y + SIGN_BOARD.h / 2);
 
     // Tunnel at the tail: passengers walk out of it into the line.
     this.tunnel = models.prop('Tunnel__1_');
     this.tunnel.position.copy(this.spot(VISIBLE + 0.6));
-    const toHead = this.spot(VISIBLE - 1).sub(this.tunnel.position);
-    this.tunnel.rotation.y = Math.atan2(-toHead.x, -toHead.z);
     this.tunnel.scale.setScalar(0.85);
     this.group.add(this.tunnel);
 
@@ -90,9 +93,14 @@ export class Station {
     return p;
   }
 
-  update(dt: number) {
+  update(dt: number, camera: Camera) {
     for (const p of this.queue) p.update(dt);
     this.counter.update(dt);
+    // Billboard the board (yaw + pitch) so the number reads head-on; the pole stays upright.
+    this.board.lookAt(camera.position);
+    // The tunnel only yaws: its opening (local -Z) turns toward the camera.
+    const t = this.tunnel.position;
+    this.tunnel.rotation.y = Math.atan2(camera.position.x - t.x, camera.position.z - t.z) + Math.PI;
   }
 
   /** Every spot the line can occupy, plus the tunnel (for camera framing). */

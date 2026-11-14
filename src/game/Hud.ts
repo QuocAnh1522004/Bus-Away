@@ -44,8 +44,9 @@ const CSS = `
 .pill{display:flex;align-items:center;gap:16px;padding:14px 34px;border-radius:999px;background:rgba(32,46,86,.82);
   box-shadow:0 6px 0 rgba(0,0,0,.18);font-weight:800;font-size:44px;letter-spacing:.02em}
 .cap{display:flex;gap:10px}
-.cap i{width:56px;height:34px;border-radius:10px;background:rgba(255,255,255,.22);transition:background .2s,transform .2s}
-.cap i.on{background:#ffc21a;transform:translateY(-4px)}
+.cap i{position:relative;width:62px;height:38px;border-radius:10px;background:rgba(255,255,255,.22);transition:background .2s,transform .25s cubic-bezier(.2,1.6,.4,1)}
+.cap i.on{transform:translateY(-4px);box-shadow:inset 0 -6px 0 rgba(0,0,0,.22),0 0 0 3px rgba(255,255,255,.85)}
+.cap i.on::after{content:"";position:absolute;left:9px;right:9px;top:8px;height:9px;border-radius:4px;background:rgba(255,255,255,.55)}
 .pill.warn{animation:warn .45s}
 @keyframes warn{0%,100%{transform:none;background:rgba(32,46,86,.82)}25%{transform:translateX(-10px);background:#e8303a}75%{transform:translateX(10px);background:#e8303a}}
 .tip{position:absolute;left:50%;top:140px;transform:translateX(-50%);padding:20px 48px;border-radius:30px;
@@ -166,8 +167,13 @@ export class Hud {
     return { top: (pad + BAND_TOP * s) / h, bottom: (pad + (land ? BAND_BOTTOM_LANDSCAPE : BAND_BOTTOM_PORTRAIT) * s) / h };
   }
 
-  setCapacity(used: number) {
-    this.capCells.forEach((c, i) => c.classList.toggle('on', i < used));
+  /** Road slots: `colors[i]` (hex) is the bus in slot i; missing entries are free slots. */
+  setRoad(colors: number[]) {
+    this.capCells.forEach((c, i) => {
+      const col = colors[i];
+      c.classList.toggle('on', col !== undefined);
+      c.style.background = col !== undefined ? `#${col.toString(16).padStart(6, '0')}` : '';
+    });
   }
 
   warnCapacity() {
