@@ -55,6 +55,7 @@ export class Game {
   private readonly raycaster = new Raycaster();
   /** Exiting buses that still hold the gate arm up. */
   private readonly atGate = new Set<Bus>();
+  private lotSeq = 0;
 
   constructor(
     private readonly stage: Stage,
@@ -222,6 +223,7 @@ export class Game {
       path = this.pathFromSlot(from);
     }
     bus.state = 'toRoad';
+    bus.lotSeq = ++this.lotSeq;
     bus.follow(path, { vmax: LOT_SPEED, through: true, onEnd: () => this.joinRoad(bus) });
     this.updateHint(false);
   }
@@ -237,6 +239,8 @@ export class Game {
   private roadEnd(bus: Bus) {
     this.onRoadBuses.splice(this.onRoadBuses.indexOf(bus), 1);
     this.syncRoadHud();
+    bus.lotSeq = ++this.lotSeq;
+    bus.afterRoad = true; // the first leg (gate / parking lane) still leads the road queue
     if (bus.full) return this.leaveThroughGate(bus);
     const slot = this.slots.findIndex((s) => s === null);
     if (slot < 0) return this.lose(bus);
@@ -258,7 +262,8 @@ export class Game {
     bus.follow(fwd, {
       keepSpeed: true,
       vmax: LOT_SPEED,
-      onEnd: () =>
+      onEnd: () => {
+        bus.afterRoad = false;
         bus.follow(back, {
           reverse: true,
           vmax: 4,
@@ -269,7 +274,8 @@ export class Game {
             sfx.park();
             this.refreshHint();
           },
-        }),
+        });
+      },
     });
   }
 
@@ -288,6 +294,8 @@ export class Game {
       vmax: 9,
       onEnd: () => {
         bus.state = 'gone';
+        bus.afterRoad = false;
+        bus.path = null;
         bus.root.visible = false;
         this.checkWin();
       },
@@ -362,20 +370,11 @@ export class Game {
 
   update(dt: number) {
     this.tweens.update(dt);
+    this.planLot();
     this.updateTraffic(dt);
-    // TMPCHECK
-    { const w = window as unknown as { __hits: string[]; __t: number }; w.__hits ??= []; w.__t = (w.__t ?? 0) + dt;
-      const vis = this.buses.filter((b) => b.root.visible && b.state !== 'gone');
-      const pts = (b: Bus) => { const r = b.root.rotation.y, dx = Math.sin(r), dz = Math.cos(r), p = b.root.position, L = b.halfLen - 0.5;
-        return [-1, -0.5, 0, 0.5, 1].map((k) => [p.x + dx * L * k, p.z + dz * L * k]); };
-      for (let i = 0; i < vis.length; i++) for (let j = i + 1; j < vis.length; j++) {
-        const a = vis[i], b = vis[j]; if (a.state === 'queued' && b.state === 'queued') continue; if (!a.path && !b.path) continue;
-        let m = 9; for (const p of pts(a)) for (const q of pts(b)) m = Math.min(m, Math.hypot(p[0] - q[0], p[1] - q[1]));
-        if (m < 1.0) w.__hits.push(`${w.__t.toFixed(1)} ${a.color}${a.seats}:${a.state} x ${b.color}${b.seats}:${b.state} d=${m.toFixed(2)} @${a.root.position.x.toFixed(1)},${a.root.position.z.toFixed(1)}`); } }
     for (const b of this.buses) {
-      if (b.state === 'queued' || b.state === 'toSlot' || b.state === 'exiting') {
-        if (b.path) b.move(dt);
-      }
+      // (toRoad / road buses move in updateTraffic)
+      if (b.path && (b.state === 'queued' || b.state === 'toSlot' || b.state === 'exiting')) b.move(dt, this.lotLimit(b));
       for (const p of b.passengers) p.update(dt);
     }
     for (const st of this.stations) st.update(dt, this.stage.camera);
@@ -400,15 +399,23 @@ export class Game {
    * GAP to the one in front.
    */
   private updateTraffic(dt: number) {
-    const movers = this.buses.filter((b) => b.state === 'toRoad' || b.state === 'road');
-    const u = (b: Bus) => (b.state === 'road' ? b.s : b.s - b.path!.length);
+    const inQueue = (b: Bus) => b.state === 'toRoad' || b.state === 'road' || (b.afterRoad && !!b.path);
+    const movers = this.buses.filter(inQueue);
+    const u = (b: Bus) => (b.state === 'road' ? b.s : b.afterRoad ? this.road.length + b.s : b.s - b.path!.length);
     movers.sort((a, b) => u(b) - u(a));
     let prev: Bus | null = null;
+    let prevRoad: Bus | null = null; // nearest leader already on (or just off) the loop
     for (const b of movers) {
+      // Lot buses take their spacing from each other via lot right-of-way (their routes merge in
+      // the lot, not on this axis); the axis only queues them behind traffic already on the road.
+      const lead = b.state === 'toRoad' ? prevRoad : prev;
       let limitU = Infinity;
       // (a leader that just left the road this frame no longer constrains anyone)
-      if (prev && (prev.state === 'road' || prev.state === 'toRoad')) limitU = u(prev) - (prev.halfLen + b.halfLen + GAP);
-      const limit = b.state === 'road' ? limitU : limitU + b.path!.length;
+      if (lead && inQueue(lead)) limitU = u(lead) - (lead.halfLen + b.halfLen + GAP);
+      prev = b;
+      if (b.state !== 'toRoad') prevRoad = b;
+      if (b.afterRoad) continue; // moved in update() with lot right-of-way; here it only leads the queue
+      const limit = b.state === 'road' ? limitU : Math.min(limitU + b.path!.length, this.lotLimit(b));
 
       if (b.state === 'road') {
         // Station decisions a little before arrival (enough to brake smoothly).
@@ -427,8 +434,69 @@ export class Game {
         if (this.canBoard(b, st)) void this.board(b, st);
         else b.stopAt = null;
       }
-      prev = b;
     }
+  }
+
+  /**
+   * Lot right-of-way, recomputed every frame for every bus moving in the lot (not on the road loop):
+   *  - `cur`:   where it is now;
+   *  - `near`:  the stretch it needs to brake (stop distance + margin);
+   *  - `ahead`: where it will be over the next ~half second (what others must keep clear of).
+   */
+  private lotPlan = new Map<Bus, { cur: Footprint; near: [number, Footprint][]; ahead: Footprint[] }>();
+
+  private planLot() {
+    this.lotPlan.clear();
+    for (const b of this.buses) {
+      const path = b.path;
+      if (!path || !(b.state === 'queued' || b.state === 'toRoad' || b.state === 'toSlot' || b.state === 'exiting')) continue;
+      const sweep = (len: number) => {
+        const out: [number, Footprint][] = [];
+        for (let d = 0.3; d <= len; d += 0.3) {
+          const s = b.s + d;
+          if (s > path.length) break;
+          const t = path.tangentAt(s, TMP_T);
+          out.push([s, footprint(path.pointAt(s, TMP_P), Math.atan2(t.x, t.z), b.halfLen)]);
+        }
+        return out;
+      };
+      const stop = b.stopDistance();
+      this.lotPlan.set(b, {
+        cur: footprint(b.root.position, b.root.rotation.y, b.halfLen),
+        near: sweep(stop + 1.2),
+        ahead: sweep(stop + b.v * 0.5 + 1.5).map(([, f]) => f),
+      });
+    }
+  }
+
+  /**
+   * How far along its path `b` may drive in the lot. It brakes (to stop ~0.9 m short) when its
+   * braking stretch would touch
+   *  (1) any lot bus where it is now (never drive into someone; if two buses nose into each other,
+   *      the higher-priority one goes), or
+   *  (2) where a higher-priority bus (lower lotSeq: started moving earlier) is about to drive, unless
+   *      `b` is already in that bus's way (then it keeps going to get out of it).
+   * Priorities are a strict order, so two buses never wait on each other.
+   */
+  private lotLimit(b: Bus) {
+    const me = this.lotPlan.get(b);
+    if (!me) return Infinity;
+    let limit = Infinity;
+    for (const [o, them] of this.lotPlan) {
+      if (o === b || clearance(me.cur, them.cur) < LOT_CLEAR) continue; // already touching: let it clear
+      const first = o.lotSeq > b.lotSeq;
+      const yieldTo = !first && !them.ahead.some((f) => clearance(me.cur, f) < LOT_CLEAR);
+      // two buses nosing into each other (merge): only the later one waits
+      const hard = !(first && them.near.some(([, g]) => clearance(me.cur, g) < LOT_CLEAR));
+      for (const [s, f] of me.near) {
+        if (s - 0.9 >= limit) break;
+        if ((hard && clearance(f, them.cur) < LOT_CLEAR) || (yieldTo && them.ahead.some((g) => clearance(f, g) < LOT_CLEAR))) {
+          limit = Math.max(b.s, s - 0.9);
+          break;
+        }
+      }
+    }
+    return limit;
   }
 
   // ------------------------------------------------------------------ end states
@@ -502,6 +570,7 @@ export class Game {
       // staggered "shuffle forward", in game time
       void this.tweens.wait(0.06 + i * 0.07).then(() => {
         if (b.state !== 'queued') return;
+        b.lotSeq = ++this.lotSeq; // yields to the bus that just pulled out of the column
         b.follow(new Path([b.root.position.clone(), target]), { vmax: 5, onEnd: () => (b.path = null) });
       });
     });
@@ -559,6 +628,22 @@ export class Game {
     this.stage.scene.remove(this.root);
     this.hud.showHand(null);
   }
+}
+
+const LOT_CLEAR = 1.15; // min distance between two bus centre-lines in the lot (body width + margin)
+const TMP_P = new Vector3();
+const TMP_T = new Vector3();
+
+type Footprint = (readonly [number, number])[];
+/** A bus as 5 points along its centre-line (ends inset by half the body width). */
+function footprint(p: Vector3, yaw: number, halfLen: number): Footprint {
+  const dx = Math.sin(yaw), dz = Math.cos(yaw), L = halfLen - 0.5;
+  return [-1, -0.5, 0, 0.5, 1].map((k) => [p.x + dx * L * k, p.z + dz * L * k] as const);
+}
+function clearance(a: Footprint, b: Footprint) {
+  let m = Infinity;
+  for (const p of a) for (const q of b) m = Math.min(m, Math.hypot(p[0] - q[0], p[1] - q[1]));
+  return m;
 }
 
 const X = new Vector3(1, 0, 0);

@@ -8,6 +8,10 @@ import { SEAT_SCALE, type Passenger } from './Passenger';
 
 /** Global bus speed multiplier (every path: lot, road, parking, gate). */
 export const SPEED = 2;
+// Same motion curve played SPEED x faster: velocity x SPEED, accel / brake x SPEED^2
+// (so braking distances, and therefore station stops, are unchanged).
+const BRAKE = 16 * SPEED * SPEED;
+const ACCEL = 11 * SPEED * SPEED;
 
 export type BusState =
   | 'queued' // waiting in a column
@@ -45,6 +49,10 @@ export class Bus {
   onPathEnd: (() => void) | null = null;
   /** Drive through the path end at speed (the next path continues it) instead of braking to a stop. */
   private through = false;
+  /** Lot right-of-way: buses that started their current lot manoeuvre earlier have priority. */
+  lotSeq = 0;
+  /** On a path that continues the road (road exit -> parking lane / gate): queues behind road traffic. */
+  afterRoad = false;
   /** Distance overshot past the end of a `through` path, handed to the next path. */
   private carry = 0;
   private prevV = 0;
@@ -100,6 +108,11 @@ export class Bus {
     this.onPathEnd = opts.onEnd ?? null;
   }
 
+  /** Distance needed to brake to a stop from the current speed. */
+  stopDistance() {
+    return (this.v * this.v) / (2 * BRAKE);
+  }
+
   /**
    * Integrate along the path towards min(stopAt, limit, path end) with accel/brake curves.
    * `limit` comes from traffic (bus ahead).
@@ -111,13 +124,9 @@ export class Bus {
     // Brake toward the stop / car ahead, and toward the path end unless it continues into another path.
     const brakeTo = Math.min(this.stopAt ?? (this.through ? Infinity : end), limit);
     const dist = Math.max(0, brakeTo - this.s);
-    // Same motion curve played SPEED x faster: velocity x SPEED, accel / brake x SPEED^2
-    // (so braking distances, and therefore station stops, are unchanged).
-    const brake = 16 * SPEED * SPEED;
-    const accel = 11 * SPEED * SPEED;
-    const vTarget = Math.min(this.vmax * SPEED, Math.sqrt(2 * brake * dist));
+    const vTarget = Math.min(this.vmax * SPEED, Math.sqrt(2 * BRAKE * dist));
     this.prevV = this.v;
-    this.v = Math.min(this.v + accel * dt, vTarget);
+    this.v = Math.min(this.v + ACCEL * dt, vTarget);
     const next = Math.min(this.s + this.v * dt, brakeTo);
     this.s = Math.max(this.s, Math.min(next, end)); // never roll backwards
     this.carry = this.through ? Math.max(0, next - end) : 0;

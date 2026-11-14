@@ -33,7 +33,7 @@ export function runBot(getGame: () => Game, speed: number) {
       return;
     }
     if (st.ended) {
-      document.title = `${st.won ? "WIN" : "LOSE"} t=${time.toFixed(1)}s HITS ${[...new Set(((window as any).__hits ?? []).map((h: string) => h.split(" d=")[0].split(" ").slice(1).join(" ")))].slice(0, 12).join(" ; ")} || ${((window as any).__hits ?? []).slice(0, 6).join(" ; ")}`; // TMPCHECK
+      document.title = `${st.won ? 'WIN' : 'LOSE'} t=${time.toFixed(1)}s | ${log.join(' ')}`;
       return;
     }
     if (time >= nextDecision) {
