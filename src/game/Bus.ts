@@ -56,6 +56,8 @@ export class Bus {
   private through = false;
   /** Lot right-of-way: buses that started their current lot manoeuvre earlier have priority. */
   lotSeq = 0;
+  /** Sent from a column: its route goes up the side lane, past the road exit (exit-zone rules). */
+  viaSide = false;
   /** On a path that continues the road (road exit -> parking lane / gate): queues behind road traffic. */
   afterRoad = false;
   /** Distance overshot past the end of a `through` path, handed to the next path. */

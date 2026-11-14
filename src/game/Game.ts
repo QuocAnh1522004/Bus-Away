@@ -73,8 +73,8 @@ export class Game {
   ) {
     stage.scene.add(this.root);
     this.models = new Models(assets);
-    // Baked centerline runs left->right on the authoring axis; reverse it = clockwise on screen.
-    this.road = Path.fromXZ(roadPathData.path.slice().reverse());
+    // a level's own road, or the art loop's baked centre line (runs left->right: reverse = clockwise)
+    this.road = LEVEL.road ? Path.fromXZ(LEVEL.road) : Path.fromXZ(roadPathData.path.slice().reverse());
     this.world = new World(this.root, this.models, assets, this.road, this.tweens);
     this.confetti = new Confetti(this.root);
     this.entry = this.road.pointAt(0).clone();
@@ -147,7 +147,7 @@ export class Game {
       if (q.has('time')) this.timeLeft = Number(q.get('time'));
     }
     // ROAD counter in the middle of the level: inside the loop, just above the lot edge
-    hud.setCounterAnchor(new Vector3(0, 0.05, 1.6));
+    hud.setCounterAnchor(new Vector3(LEVEL.counter[0], 0.05, LEVEL.counter[1]));
     hud.setMoves(this.movesLeft, false);
     hud.setTime(this.timeLeft, false);
     hud.showTip('Tap a bus to pick up its colour!');
@@ -244,6 +244,7 @@ export class Game {
 
     const from = bus.root.position.clone();
     let path: Path;
+    bus.viaSide = bus.state === 'queued';
     if (bus.state === 'queued') {
       const col = this.columns[bus.column];
       col.shift();
@@ -465,7 +466,7 @@ export class Game {
       prev = b;
       if (b.state !== 'toRoad') prevRoad = b;
       if (b.afterRoad) continue; // moved in update() with lot right-of-way; here it only leads the queue
-      const limit = b.state === 'road' ? limitU : Math.min(limitU + b.path!.length, this.lotLimit(b));
+      const limit = b.state === 'road' ? Math.min(limitU, this.exitHold(b)) : Math.min(limitU + b.path!.length, this.lotLimit(b), this.exitZoneLimit(b));
 
       if (b.state === 'road') {
         // Station decisions a little before arrival (enough to brake smoothly). No full stop: the
@@ -503,6 +504,38 @@ export class Game {
    */
   private lotPlan = new Map<Bus, { cur: Footprint; near: [number, Footprint][]; ahead: Footprint[] }>();
 
+  /**
+   * Exit zone: where the side lane (column buses heading up to the top lane) passes the road exit.
+   * Buses leaving the road and side-lane buses take turns through it:
+   *  - a side-lane bus doesn't enter while a bus is about to leave the road or is still in the zone;
+   *  - a bus about to leave the road holds at the exit while a side-lane bus is in the zone.
+   */
+  private inExitZone(f: Footprint) {
+    const cx = this.exit.x + 0.9, cz = -0.2;
+    return f.some(([x, z]) => Math.hypot(x - cx, z - cz) < EXIT_ZONE_R);
+  }
+
+  private exitBusy() {
+    return this.buses.some(
+      (o) => (o.state === 'road' && o.s > this.road.length - EXIT_WARN) || (o.afterRoad && !!o.path && this.inExitZone(this.lotPlan.get(o)?.cur ?? [])),
+    );
+  }
+
+  /** Side-lane (toRoad) bus: stop short of the exit zone while the exit is busy. */
+  private exitZoneLimit(b: Bus) {
+    const me = this.lotPlan.get(b);
+    if (!me || !b.viaSide || this.inExitZone(me.cur) || !this.exitBusy()) return Infinity; // already in: drive on through
+    for (const [s, f] of me.near) if (this.inExitZone(f)) return Math.max(b.s, s - 0.3);
+    return Infinity;
+  }
+
+  /** Road bus about to leave the road: hold at the exit while a side-lane bus is in the zone. */
+  private exitHold(b: Bus) {
+    if (b.s < this.road.length - EXIT_WARN) return Infinity;
+    for (const [o, p] of this.lotPlan) if (o.state === 'toRoad' && o.viaSide && this.inExitZone(p.cur)) return this.road.length - 0.3;
+    return Infinity;
+  }
+
   private planLot() {
     this.lotPlan.clear();
     for (const b of this.buses) {
@@ -530,25 +563,36 @@ export class Game {
   /**
    * How far along its path `b` may drive in the lot. It brakes (to stop ~0.9 m short) when its
    * braking stretch would touch
-   *  (1) any lot bus where it is now (never drive into someone; if two buses nose into each other,
-   *      the higher-priority one goes), or
+   *  (1) any lot bus where it is now: never drive into someone. If two buses nose into each other
+   *      (a merge), the one further into it (more free road ahead of it) goes, the other waits;
+   *      a tie goes to the higher priority;
    *  (2) where a higher-priority bus (lower lotSeq: started moving earlier) is about to drive, unless
    *      `b` is already in that bus's way (then it keeps going to get out of it).
-   * Priorities are a strict order, so two buses never wait on each other.
    */
   private lotLimit(b: Bus) {
     const me = this.lotPlan.get(b);
     if (!me) return Infinity;
     let limit = Infinity;
+    /** Distance `x` can drive (along its braking stretch) before touching body `body`. */
+    const free = (x: Bus, near: [number, Footprint][], body: Footprint) => {
+      for (const [s, f] of near) if (clearance(f, body) < LOT_CLEAR) return s - x.s;
+      return Infinity;
+    };
     for (const [o, them] of this.lotPlan) {
-      if (o === b || clearance(me.cur, them.cur) < LOT_CLEAR) continue; // already touching: let it clear
+      if (o === b || clearance(me.cur, them.cur) < LOT_OVERLAP) continue; // already overlapping: let it clear
       const first = o.lotSeq > b.lotSeq;
-      const yieldTo = !first && !them.ahead.some((f) => clearance(me.cur, f) < LOT_CLEAR);
-      // two buses nosing into each other (merge): only the later one waits
-      const hard = !(first && them.near.some(([, g]) => clearance(me.cur, g) < LOT_CLEAR));
+      // give way only to a bus that is actually moving (a waiting one can't take its turn: that only
+      // builds wait cycles); buses leaving the road don't give way to side-lane buses (exit zone)
+      const yieldTo = !first && o.v > 0.3 && !(b.afterRoad && o.viaSide) && !them.ahead.some((f) => clearance(me.cur, f) < LOT_CLEAR);
+      const dMe = free(b, me.near, them.cur);
+      const dThem = free(o, them.near, me.cur);
+      // nosing into each other: off-the-road beats side lane (as in the exit zone), else the one
+      // further in goes, a tie goes to the earlier bus
+      const iGo = b.afterRoad && o.viaSide ? true : o.afterRoad && b.viaSide ? false : dThem < dMe || (dThem === dMe && first);
+      const hard = dMe < Infinity && !(dThem < Infinity && iGo);
       for (const [s, f] of me.near) {
         if (s - 0.9 >= limit) break;
-        if ((hard && clearance(f, them.cur) < LOT_CLEAR) || (yieldTo && them.ahead.some((g) => clearance(f, g) < LOT_CLEAR))) {
+        if ((hard && s - b.s >= dMe) || (yieldTo && them.ahead.some((g) => clearance(f, g) < LOT_CLEAR))) {
           limit = Math.max(b.s, s - 0.9);
           break;
         }
@@ -710,6 +754,9 @@ export class Game {
 }
 
 const LOT_CLEAR = 1.15; // min distance between two bus centre-lines in the lot (body width + margin)
+const EXIT_WARN = 6; // m before the road end: a bus this close "owns" the exit zone
+const EXIT_ZONE_R = 1.9;
+const LOT_OVERLAP = 0.85; // closer than this the bodies already overlap: don't freeze, let them separate
 const TMP_P = new Vector3();
 const TMP_T = new Vector3();
 

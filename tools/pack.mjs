@@ -13,7 +13,7 @@ import { join, resolve } from 'node:path';
 import { deflateRawSync, constants } from 'node:zlib';
 import { build } from 'vite';
 
-const dist = resolve(import.meta.dirname, '..', 'dist');
+const dist = resolve(import.meta.dirname, '..', process.argv[2] ?? 'dist'); // build dir (dist, dist-level2)
 const file = join(dist, 'index.html');
 const html = readFileSync(file, 'utf8');
 

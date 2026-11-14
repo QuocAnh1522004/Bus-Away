@@ -2,6 +2,7 @@ import { BoxGeometry, Group, InstancedMesh, Matrix4, Mesh, PlaneGeometry, Quater
 import { createDecalMaterial, createFlatMaterial } from '../engine/materials';
 import type { Path } from '../engine/path';
 import { createPropMaterial, pineGeometry, snowmanGeometry } from '../engine/procedural';
+import { buildRoadGeometry } from '../engine/roadMesh';
 import { ease, type Tweens } from '../engine/tween';
 import type { Assets } from '../engine/assets';
 import { LEVEL, LOT, LOT_EDGE_Z, STRETCH } from './level';
@@ -18,7 +19,8 @@ export class World {
   readonly propMaterial = createPropMaterial();
 
   constructor(parent: Object3D, models: Models, assets: Assets, road: Path, private readonly tweens: Tweens) {
-    this.group.add(models.prop('Ground_01'), models.prop('SplineMesh'));
+    // the art's road loop, or this level's own road swept with the same cross-section
+    this.group.add(models.prop('Ground_01'), LEVEL.road ? new Mesh(buildRoadGeometry(road), models.shared.road) : models.prop('SplineMesh'));
     this.addLotApron(models);
     this.addRoadDashes(road);
     this.addScenery();
@@ -37,7 +39,9 @@ export class World {
     this.group.add(barrier);
 
     // Parking slot decals.
-    const slotGeo = new PlaneGeometry(1.8, 3.2);
+    // narrower decals when slots are packed tighter than the art's 2.2 m
+    const pitch = Math.min(...LEVEL.slots.slice(1).map((x, i) => Math.abs(x - LEVEL.slots[i])));
+    const slotGeo = new PlaneGeometry(Math.min(1.8, pitch - 0.12), 3.2);
     slotGeo.rotateX(-Math.PI / 2);
     const slotMat = createDecalMaterial(assets.tex.slot, 0xffffff, 0.55);
     for (const x of LEVEL.slots) {
@@ -105,14 +109,8 @@ export class World {
 
   /** Snowy pines + a snowman inside the loop and around the lot (procedural, instanced). */
   private addScenery() {
-    // [x, z, scale] — inside the loop, and outside it clear of the station queues
-    // [x, z, scale] in world space (after the playfield stretch)
-    const trees: [number, number, number][] = [
-      // inside the loop
-      [1.3, 3.9, 1.0], [3.0, 7.9, 1.15], [0.3, 11.1, 0.9], [-0.5, 5.9, 0.75], [2.6, 11.9, 0.7],
-      // hugging the road's outside: top-left bend, and where each road leg meets the lot
-      [4.9, 14.3, 1.0], [8.1, 2.4, 0.9], [-7.4, 4.4, 0.95], [-8.7, 2.2, 0.8],
-    ];
+    // per level: [x, z, scale] in world space (after the playfield stretch), clear of road + queues
+    const { trees, snowman: sm } = LEVEL.scenery;
     const mat = this.propMaterial;
     const pines = new InstancedMesh(pineGeometry(), mat, trees.length);
     const m = new Matrix4();
@@ -123,11 +121,13 @@ export class World {
       pines.setMatrixAt(i, m);
     });
     this.group.add(pines);
-    const snowman = new Mesh(snowmanGeometry(), mat);
-    snowman.position.set(1.05, 0, 7.5);
-    snowman.rotation.y = Math.PI + 0.4;
-    snowman.scale.setScalar(0.75);
-    this.group.add(snowman);
+    if (sm) {
+      const snowman = new Mesh(snowmanGeometry(), mat);
+      snowman.position.set(sm[0], 0, sm[1]);
+      snowman.rotation.y = sm[2];
+      snowman.scale.setScalar(sm[3]);
+      this.group.add(snowman);
+    }
   }
 
   /** Reference-counted: the arm stays up while any bus is passing. */

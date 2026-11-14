@@ -15,7 +15,23 @@ npm run assets       # rebuild src/assets/gen/ from art-src/ (FBX/PNG -> GLB/Web
 npm run typecheck
 ```
 
-## Gameplay (rules from the brief)
+## Levels
+
+Two variants are built from the same code; each level is a data file in [src/game/levels/](src/game/levels/):
+
+| | Level 1 ([level1.ts](src/game/levels/level1.ts)) | Level 2 ([level2.ts](src/game/levels/level2.ts)) |
+| --- | --- | --- |
+| Build | `npm run build` -> `dist/index.html` | `npm run build:level2` -> `dist-level2/index.html` |
+| Dev server | `http://localhost:5173/` | `http://localhost:5173/?level=2` |
+| Road | the art's loop (SplineMesh) | an "M" with a centre notch, swept from the art road's cross-section ([src/engine/roadMesh.ts](src/engine/roadMesh.ts)) |
+| Stations / slots / road limit | 2 / 4 / 3 | 3 / 5 / 5 |
+| Buses (passengers) | 10 (60) | 20 in 5 columns, 6 colours (124) |
+| Moves / time | 20 / 60 s | 34 / 90 s |
+
+The level-1 build as it was before the variants is tagged `level1-v1`.
+Level 2's passenger queues are generated from a playable launch order (see `queues()`), so it is always winnable.
+
+
 
 | Brief | Implementation |
 | --- | --- |

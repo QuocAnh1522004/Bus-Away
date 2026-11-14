@@ -1,9 +1,11 @@
 import { Vector3 } from 'three';
 import type { ColorName } from './palette';
 import roadPath from '../assets/gen/road-path.json';
+import { LEVEL1 } from './levels/level1';
+import { LEVEL2 } from './levels/level2';
 
 /**
- * Level 1. All coordinates are world space (metres). Authoring axis note: the camera looks from -Z
+ * Level data + shared lot geometry. All coordinates are world space (metres). Authoring axis note: the camera looks from -Z
  * toward +Z, so SCREEN-RIGHT == WORLD -X. The road loop is the art's spline mesh; its centerline is
  * baked by tools/build-assets.mjs and driven in reverse (= clockwise on screen).
  */
@@ -19,29 +21,38 @@ export type StationDef = {
   bend?: number;
 };
 
-const run = (color: ColorName, n: number): ColorName[] => Array(n).fill(color);
-
-export const LEVEL = {
+/** Everything that makes a level (see levels/level1.ts, levels/level2.ts). */
+export type LevelDef = {
   /** Max buses on the road at the same time. */
-  capacity: 3,
+  capacity: number;
   /** Taps that send a bus out. At 0 the level is lost once the road clears without a win. */
-  moves: 20,
+  moves: number;
   /** Seconds, counting down from the first tap. At 0 the level is lost. */
-  time: 60,
+  time: number;
   /** Columns of buses, front first. x = world x of the column. */
-  columns: [
-    { x: 3.3, buses: [{ color: 'red', seats: 6 }, { color: 'blue', seats: 4 }, { color: 'green', seats: 10 }] },
-    { x: 1.1, buses: [{ color: 'blue', seats: 6 }, { color: 'yellow', seats: 4 }, { color: 'red', seats: 4 }] },
-    { x: -1.1, buses: [{ color: 'yellow', seats: 10 }, { color: 'green', seats: 6 }] },
-    { x: -3.3, buses: [{ color: 'green', seats: 4 }, { color: 'red', seats: 6 }] },
-  ] as { x: number; buses: BusDef[] }[],
-  stations: [
-    { s: 6.6, queue: [...run('red', 6), ...run('blue', 6), ...run('yellow', 4), ...run('green', 4), ...run('red', 4), ...run('green', 6)] },
-    { s: 23.0, queue: [...run('yellow', 10), ...run('green', 10), ...run('blue', 4), ...run('red', 6)] },
-  ] as StationDef[],
-  /** Parking slots, in "first free slot" order (nearest to the road exit first). */
-  slots: [-3.3, -1.1, 1.1, 3.3],
+  columns: { x: number; buses: BusDef[] }[];
+  stations: StationDef[];
+  /** Parking slots (world x), in "first free slot" order (nearest to the road exit first). */
+  slots: number[];
+  /**
+   * Road centre line [x, z], clockwise on screen: from the entry (+x curb gap) to the exit (-x curb
+   * gap). Omitted = the art's SplineMesh loop and its baked centre line.
+   */
+  road?: number[][];
+  /** ROAD counter anchor [x, z] (inside the loop). */
+  counter: [number, number];
+  scenery: {
+    /** [x, z, scale] */
+    trees: [number, number, number][];
+    /** [x, z, rotationY, scale] */
+    snowman?: [number, number, number, number];
+  };
 };
+
+declare const __LEVEL__: number; // set per build mode in vite.config.ts
+/** Dev server: ?level=2 overrides the build's level. */
+const LEVEL_NO = import.meta.env.DEV ? Number(new URLSearchParams(location.search).get('level') ?? __LEVEL__) : __LEVEL__;
+export const LEVEL: LevelDef = LEVEL_NO === 2 ? LEVEL2 : LEVEL1;
 
 /** Lot geometry (see level art: Ground_01 spans x[-7.5,7.5] z[-17.5,1]). */
 /** Front edge (z) of the lot slab (Ground_01), measured by tools/build-assets.mjs. */
@@ -61,8 +72,8 @@ export const LOT = {
   /** Lower lane between parking and the bus columns. */
   laneMid: -5.2,
   /** Side lane (bus centre x) that column buses take up to the upper lane: midway between the
-   *  screen-rightmost slot edge (x = -3.95) and the road exit (x = -4.4 * STRETCH). */
-  sideLane: (-3.95 - 4.4 * STRETCH) / 2,
+   *  screen-rightmost parked bus's edge and the road exit (x = -4.4 * STRETCH). */
+  sideLane: (Math.min(...LEVEL.slots) - 0.65 - 4.4 * STRETCH) / 2,
   /** Front edge of the bus columns. */
   columnFront: -6.1,
   columnGap: 0.45,

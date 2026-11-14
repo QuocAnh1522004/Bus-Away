@@ -3,7 +3,7 @@ import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { gzipSync, brotliCompressSync } from 'node:zlib';
 import { join, resolve } from 'node:path';
 
-const dist = resolve(import.meta.dirname, '..', 'dist');
+const dist = resolve(import.meta.dirname, '..', process.argv[2] ?? 'dist'); // build dir (dist, dist-level2)
 const html = readdirSync(dist).find((f) => f.endsWith('.html'));
 const buf = readFileSync(join(dist, html));
 const kb = (n) => `${(n / 1024).toFixed(1)} KB`;

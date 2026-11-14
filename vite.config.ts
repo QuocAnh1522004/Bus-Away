@@ -35,7 +35,10 @@ function classicInlineScript(): Plugin {
   };
 }
 
-export default defineConfig({
+// Level variants: `vite build` = level 1 -> dist/, `vite build --mode level2` = level 2 -> dist-level2/.
+// The dev server picks with ?level=2.
+export default defineConfig(({ mode }) => ({
+  define: { __LEVEL__: JSON.stringify(mode === 'level2' ? 2 : 1) },
   plugins: [viteSingleFile({ removeViteModuleLoader: true }), classicInlineScript()],
   server: { port: 5173, host: true },
   // three + its examples must resolve to ONE module instance in dev (no split pre-bundles).
@@ -48,6 +51,7 @@ export default defineConfig({
     ],
   },
   build: {
+    outDir: mode === 'level2' ? 'dist-level2' : 'dist',
     target: 'es2020',
     minify: 'terser',
     terserOptions: {
@@ -61,4 +65,4 @@ export default defineConfig({
     reportCompressedSize: false,
     chunkSizeWarningLimit: 4096,
   },
-});
+}));

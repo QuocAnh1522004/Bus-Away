@@ -7,6 +7,7 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build && node tools/pack.mjs && node tools/report-size.mjs",
+    "build:level2": "vite build --mode level2 && node tools/pack.mjs dist-level2 && node tools/report-size.mjs dist-level2",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
     "assets": "node tools/build-assets.mjs",
