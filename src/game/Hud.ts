@@ -4,8 +4,9 @@ import { Vector3, type Camera } from 'three';
  * UI, fully decoupled from gameplay rendering (DOM over the WebGL canvas):
  *
  *   #ui
- *   ├─ .world   screen-space layer for 3D-anchored widgets (station counters, hint hand),
- *   │           projected from world positions every frame
+ *   ├─ .world   screen-space layer for 3D-anchored widgets (hint hand), projected every frame.
+ *   │           (Station counters are NOT here: they are 3D, see Counter.ts, so passengers
+ *   │           in front of a sign correctly hide it.)
  *   ├─ .dim     full-screen backdrop for the end card
  *   └─ .frame   DESIGN-RESOLUTION container: 1080x1920 (portrait) or 3413x1920 (landscape),
  *               uniformly scaled to fit and centred. All HUD layout is in design pixels, so the
@@ -29,9 +30,6 @@ const CSS = `
 #ui .frame{position:absolute;left:0;top:0;transform-origin:0 0}
 
 /* ---- world-anchored (sizes follow the frame scale --s) */
-.lbl{position:absolute;left:0;top:0;min-width:calc(96px*var(--s));font-variant-numeric:tabular-nums;transform-origin:50% 100%;transition:opacity .2s;padding:calc(8px*var(--s)) calc(20px*var(--s));
-  border-radius:calc(22px*var(--s));background:#2b3a6b;border:calc(6px*var(--s)) solid #fff;font-weight:900;
-  font-size:calc(44px*var(--s));text-align:center;box-shadow:0 calc(6px*var(--s)) 0 rgba(0,0,0,.2);will-change:transform}
 .hand{position:absolute;left:0;top:0;width:calc(150px*var(--s));height:calc(150px*var(--s));opacity:0;transition:opacity .25s;will-change:transform}
 .hand.show{opacity:1}
 .hand svg{width:100%;height:100%;animation:tapAnim 1s ease-in-out infinite;transform-origin:30% 10%;filter:drop-shadow(0 4px 4px rgba(0,0,0,.3))}
@@ -82,7 +80,6 @@ const HAND_SVG = `<svg viewBox="0 0 64 64"><path fill="#fff" stroke="#2b3a6b" st
 
 export class Hud {
   readonly el: HTMLDivElement;
-  private readonly world: HTMLDivElement;
   private readonly frame: HTMLDivElement;
   private readonly dim: HTMLDivElement;
   private readonly mainCta: HTMLButtonElement;
@@ -92,8 +89,6 @@ export class Hud {
   private readonly toastEl: HTMLDivElement;
   private readonly tipEl: HTMLDivElement;
   private readonly end: HTMLDivElement;
-  /** 3D-anchored labels. `pop`/`popV`: damped spring for the count-change punch (see update). */
-  private readonly labels: { el: HTMLDivElement; anchor: Vector3; value: number; pop: number; popV: number }[] = [];
   private toastTimer = 0;
   private handTarget: Vector3 | null = null;
   onCta: () => void = () => {};
@@ -119,7 +114,6 @@ export class Hud {
       </div>`;
     document.body.appendChild(el);
     this.el = el;
-    this.world = el.querySelector('.world')!;
     this.frame = el.querySelector('.frame')!;
     this.dim = el.querySelector('.dim')!;
     this.mainCta = el.querySelector('.main-cta')!;
@@ -194,30 +188,6 @@ export class Hud {
     this.tipEl.classList.toggle('hide', !text);
   }
 
-  addLabel(anchor: Vector3, value: number) {
-    const el = document.createElement('div');
-    el.className = 'lbl';
-    el.textContent = String(value);
-    this.world.insertBefore(el, this.hand);
-    const label = { el, anchor, value, pop: 0, popV: 0 };
-    this.labels.push(label);
-    return (v: number) => {
-      if (v === label.value) return;
-      label.value = v;
-      el.textContent = String(v);
-      // Impulse into a spring instead of restarting a CSS animation: passengers board every ~85 ms,
-      // and restarting a 250 ms keyframe that often snapped the scale back to 1 (visible stutter)
-      // and forced a layout each time. Impulses accumulate smoothly.
-      label.popV = Math.min(label.popV + 5, 9);
-      if (v <= 0) el.style.opacity = '0';
-    };
-  }
-
-  clearLabels() {
-    for (const l of this.labels) l.el.remove();
-    this.labels.length = 0;
-  }
-
   showHand(target: Vector3 | null) {
     this.handTarget = target;
     this.hand.classList.toggle('show', !!target);
@@ -256,19 +226,8 @@ export class Hud {
     }
   }
 
-  /** Per-frame: project 3D anchors into the world layer, tick the toast. */
+  /** Per-frame: project the hint hand's 3D anchor into the world layer, tick the toast. */
   update(dt: number, camera: Camera, w: number, h: number) {
-    const step = Math.min(dt, 1 / 30);
-    for (const l of this.labels) {
-      // critically-damped-ish spring toward 0 (k = 260, c = 20)
-      l.popV += (-260 * l.pop - 20 * l.popV) * step;
-      l.pop = Math.max(-0.1, Math.min(0.3, l.pop + l.popV * step));
-      const p = v.copy(l.anchor).project(camera);
-      // whole pixels: no sub-pixel text shimmer
-      const x = Math.round(((p.x + 1) / 2) * w);
-      const y = Math.round(((1 - p.y) / 2) * h);
-      l.el.style.transform = `translate(${x}px,${y}px) translate(-50%,-100%) scale(${(1 + l.pop).toFixed(3)})`;
-    }
     if (this.handTarget) {
       const p = v.copy(this.handTarget).project(camera);
       this.hand.style.transform = `translate(${((p.x + 1) / 2) * w}px,${((1 - p.y) / 2) * h}px) translate(-22%,-8%)`;

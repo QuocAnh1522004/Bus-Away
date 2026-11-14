@@ -14,6 +14,8 @@ export class World {
   private gateUsers = 0;
   private gateAngle = 0;
   readonly slotDecals: Mesh[] = [];
+  /** Vertex-colour toon material shared by every procedural prop (trees, snowman, signposts). */
+  readonly propMaterial = createPropMaterial();
 
   constructor(parent: Object3D, models: Models, assets: Assets, road: Path, private readonly tweens: Tweens) {
     this.group.add(models.prop('Ground_01'), models.prop('SplineMesh'));
@@ -74,9 +76,9 @@ export class World {
     // [x, z, scale] — inside the loop, and outside it clear of the station queues
     const trees: [number, number, number][] = [
       [1.0, 3.9, 1.0], [2.3, 7.9, 1.15], [0.2, 11.1, 0.9], [-0.4, 5.9, 0.75], [2.0, 11.9, 0.7],
-      [-6.9, 8.4, 1.1], [-7.6, 11.9, 0.9], [7.4, 12.7, 1.0], [8.4, 3.3, 0.9],
+      [-6.4, 13.2, 1.0], [6.6, 12.4, 1.0], [8.6, 9.6, 0.8],
     ];
-    const mat = createPropMaterial();
+    const mat = this.propMaterial;
     const pines = new InstancedMesh(pineGeometry(), mat, trees.length);
     const m = new Matrix4();
     const q = new Quaternion();

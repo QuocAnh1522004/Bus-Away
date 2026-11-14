@@ -14,6 +14,8 @@ export type StationDef = {
   s: number;
   /** Passenger colours, head of the queue first. */
   queue: ColorName[];
+  /** Override which way the line curls (-1 back along the road, +1 forward). Default: toward the camera. */
+  bend?: number;
 };
 
 const run = (color: ColorName, n: number): ColorName[] => Array(n).fill(color);

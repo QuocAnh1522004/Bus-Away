@@ -1,4 +1,4 @@
-import { BufferAttribute, BufferGeometry, Color, ConeGeometry, CylinderGeometry, ShaderMaterial, SphereGeometry } from 'three';
+import { BoxGeometry, BufferAttribute, BufferGeometry, Color, ConeGeometry, CylinderGeometry, ShaderMaterial, SphereGeometry } from 'three';
 
 /**
  * Procedural low-poly props (no asset bytes): merged into one vertex-coloured geometry so a whole
@@ -43,6 +43,20 @@ export function pineGeometry() {
     colored(new ConeGeometry(0.48, 0.3, seg), 0xf4f8ff, 1.66),
     colored(new ConeGeometry(0.48, 0.72, seg), 0x40bf78, 1.8),
     colored(new ConeGeometry(0.3, 0.32, seg), 0xf4f8ff, 2.05),
+  ]);
+}
+
+/** Counter signpost: pole + framed screen (the number is a DOM label drawn on the screen). */
+export const SIGN_BOARD = { w: 1.95, h: 1.045, y: 1.45 }; // screen = (w-0.14) x (h-0.14) = 2:1
+export function signpostGeometry() {
+  const { w, h, y } = SIGN_BOARD;
+  const frame = new BoxGeometry(w, h, 0.12);
+  const screen = new BoxGeometry(w - 0.14, h - 0.14, 0.02);
+  screen.translate(0, 0, -0.065); // faces -Z (toward the camera)
+  return merge([
+    colored(new CylinderGeometry(0.05, 0.06, y, 8), 0x3a4766, y / 2),
+    colored(frame, 0xdfe6f5, y),
+    colored(screen, 0x2b3a6b, y),
   ]);
 }
 

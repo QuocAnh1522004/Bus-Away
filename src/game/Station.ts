@@ -1,44 +1,75 @@
-import { Group, Vector3, type Object3D } from 'three';
-import type { Path } from '../engine/path';
+import { Group, Mesh, Vector3, type Material, type Object3D } from 'three';
+import { Path } from '../engine/path';
+import { SIGN_BOARD, signpostGeometry } from '../engine/procedural';
 import { ease, lerpAngle, type Tweens } from '../engine/tween';
+import { Counter } from './Counter';
 import type { StationDef } from './level';
 import type { Models } from './models';
 import type { ColorName } from './palette';
 import { Passenger, STAND_SCALE } from './Passenger';
 
-const VISIBLE = 8; // stickmen standing in line; the rest wait "inside" the station (sign counter)
-const SPACING = 0.72;
-const SIDE_OFFSET = 1.72; // from road centre to the queue line (outside of the loop)
+const VISIBLE = 7; // stickmen standing in line; the rest wait "inside" the station (sign counter)
+const SPACING = 0.6;
+const HEAD_OFFSET = 2.4; // road centre -> head of the queue (clear of the snow bank)
+const SIGN_OFFSET = 1.85; // road centre -> counter signpost (between the head and the road)
 
 /**
- * A bus stop: spawns passengers and keeps them in a single-file queue along the roadside.
- * Only the head of the queue can board.
+ * A bus stop: spawns passengers and keeps them in a single-file line that leaves the road
+ * outward (away from the loop) and then curls back along it, like the original game.
+ * A sign between the head and the road shows how many passengers are left; only the head boards.
  */
 export class Station {
   readonly group = new Group();
   readonly s: number;
-  readonly sign: Object3D;
-  /** World point the counter label floats above. */
-  readonly labelAnchor = new Vector3();
+  /** Spawn tunnel at the tail of the line (asset `Tunnel__1_`). */
+  readonly tunnel: Object3D;
+  /** Top of the signpost (camera framing). */
+  readonly signTop = new Vector3();
+  /** Passengers-left counter, drawn in 3D on the sign's screen. */
+  private readonly counter = new Counter(SIGN_BOARD.w - 0.14, SIGN_BOARD.h - 0.14);
   queue: Passenger[] = [];
   private pending: ColorName[];
-  onCountChange: () => void = () => {};
+  /** Centre line of the queue, from the head outward. */
+  private readonly line: Path;
 
   constructor(
     def: StationDef,
-    private readonly road: Path,
+    road: Path,
     private readonly models: Models,
     private readonly tweens: Tweens,
+    propMaterial: Material,
   ) {
     this.s = def.s;
     this.pending = def.queue.slice();
-    this.sign = models.prop('Tunnel__1_');
-    const signPos = this.spot(-1.15);
-    this.sign.position.copy(signPos);
-    this.sign.rotation.y = this.headingAt(this.s) + Math.PI;
-    this.group.add(this.sign);
-    this.labelAnchor.copy(signPos).setY(2.25);
+
+    // Local frame at the stop: t = travel direction, n = outside of the loop (left of travel).
+    const c = road.pointAt(def.s);
+    const t = road.tangentAt(def.s);
+    const n = new Vector3(t.z, 0, -t.x);
+    // Curl the line toward the camera (lower z) and keep the sign on the far side of the head, so the
+    // sign never hides the head passenger: -1 = back along the road, +1 = forward along it.
+    const bend = def.bend ?? (t.z >= 0 ? -1 : 1);
+    const at = (out: number, along: number) => c.clone().addScaledVector(n, out).addScaledVector(t, along);
+    this.line = Path.bezier(at(HEAD_OFFSET, 0), at(HEAD_OFFSET + 1.5, 0), at(HEAD_OFFSET + 2.3, 0.6 * bend), at(HEAD_OFFSET + 2.5, 2.4 * bend), 24);
+
+    // Counter signpost between the head of the line and the road, screen facing the camera.
+    const sign = new Mesh(signpostGeometry(), propMaterial);
+    sign.position.copy(at(SIGN_OFFSET, -0.8 * bend));
+    this.group.add(sign);
+    this.counter.mesh.position.set(0, SIGN_BOARD.y, -0.08); // just in front of the screen face
+    sign.add(this.counter.mesh);
+    this.signTop.copy(sign.position).setY(SIGN_BOARD.y + SIGN_BOARD.h / 2);
+
+    // Tunnel at the tail: passengers walk out of it into the line.
+    this.tunnel = models.prop('Tunnel__1_');
+    this.tunnel.position.copy(this.spot(VISIBLE + 0.6));
+    const toHead = this.spot(VISIBLE - 1).sub(this.tunnel.position);
+    this.tunnel.rotation.y = Math.atan2(-toHead.x, -toHead.z);
+    this.tunnel.scale.setScalar(0.85);
+    this.group.add(this.tunnel);
+
     while (this.queue.length < VISIBLE && this.pending.length) this.spawn(true);
+    this.counter.set(this.remaining);
   }
 
   get remaining() {
@@ -55,40 +86,48 @@ export class Station {
     if (!p) return undefined;
     if (this.pending.length) this.spawn(false);
     this.advance();
-    this.onCountChange();
+    this.counter.set(this.remaining);
     return p;
   }
 
   update(dt: number) {
     for (const p of this.queue) p.update(dt);
+    this.counter.update(dt);
   }
 
-  /** Queue slot i (0 = head) position: back along the road, offset to the outside. */
+  /** Every spot the line can occupy, plus the tunnel (for camera framing). */
+  spots() {
+    return [...Array.from({ length: VISIBLE }, (_, i) => this.spot(i)), this.tunnel.position.clone()];
+  }
+
+  /** Queue slot i (0 = head) along the line; extrapolated straight past its end. */
   spot(i: number, out = new Vector3()) {
-    const s = this.s - 0.15 - i * SPACING;
-    const p = this.road.pointAt(s, out);
-    const t = this.road.tangentAt(s);
-    // left of travel direction = outside of the clockwise loop
-    return p.set(p.x + t.z * SIDE_OFFSET, 0, p.z - t.x * SIDE_OFFSET);
+    const d = i * SPACING;
+    const len = this.line.length;
+    if (d <= len) return this.line.pointAt(d, out);
+    return this.line.pointAt(len, out).addScaledVector(this.line.tangentAt(len), d - len);
   }
 
-  private headingAt(s: number) {
-    const t = this.road.tangentAt(s);
-    return Math.atan2(t.x, t.z);
+  /** Everyone faces the person in front of them; the head faces the road. */
+  private headingAt(i: number) {
+    const t = this.line.tangentAt(Math.min(i * SPACING, this.line.length));
+    return Math.atan2(-t.x, -t.z);
   }
 
   private spawn(instant: boolean) {
     const color = this.pending.shift()!;
     const p = new Passenger(this.models, color);
     const i = this.queue.length;
-    this.spot(i, p.root.position);
-    p.root.rotation.y = this.headingAt(this.s - i * SPACING);
+    p.root.rotation.y = this.headingAt(i);
     this.queue.push(p);
     this.group.add(p.root);
-    if (!instant) {
-      // pop in at the tail
-      p.root.scale.setScalar(0.01);
-      void this.tweens.to(0.3, (k) => p.root.scale.setScalar(STAND_SCALE * Math.max(0.01, k)), { ease: ease.outBack, delay: 0.15 });
+    if (instant) {
+      this.spot(i, p.root.position);
+    } else {
+      // walk out of the tunnel; advance() (called right after) moves everyone to their spot
+      p.root.position.copy(this.tunnel.position);
+      p.root.scale.setScalar(STAND_SCALE * 0.6);
+      void this.tweens.to(0.25, (k) => p.root.scale.setScalar(STAND_SCALE * (0.6 + 0.4 * k)), { ease: ease.outBack });
     }
   }
 
@@ -98,7 +137,7 @@ export class Station {
       const from = p.root.position.clone();
       const to = this.spot(i);
       const h0 = p.root.rotation.y;
-      const h1 = this.headingAt(this.s - i * SPACING);
+      const h1 = this.headingAt(i);
       p.play('Walk', 0.08);
       this.tweens.kill(p);
       const id = ++p.moveId;

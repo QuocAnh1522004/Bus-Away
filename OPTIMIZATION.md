@@ -88,7 +88,8 @@ produces 1.9 KB of JSON. No path editor, no hand-placed waypoints, and nothing t
 | Feature | Usual approach | Here |
 | --- | --- | --- |
 | Sound effects | MP3/OGG files (tens of KB each) | **WebAudio synthesis**: a few oscillators per cue, 0 bytes of audio |
-| UI, labels, end card, hand cursor | Sprite atlases + bitmap fonts | **HTML/CSS + inline SVG**: sharp at any DPR, about 4 KB of CSS |
+| UI, end card, hand cursor | Sprite atlases + bitmap fonts | **HTML/CSS + inline SVG**: sharp at any DPR, about 4 KB of CSS |
+| Station counters, signposts | Number sprites + sign model | **Canvas-texture digits** on a procedural signpost, redrawn only on change |
 | Trees, snowman | Extra models + textures | **Procedural low-poly geometry** with vertex colours, merged and instanced |
 | Road centre dashes | Texture or extra mesh | One **InstancedMesh** of quads along the baked path |
 | Confetti | Particle textures | CSS animation |

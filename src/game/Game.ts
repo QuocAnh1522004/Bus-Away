@@ -65,10 +65,8 @@ export class Game {
     this.exit = this.road.pointAt(this.road.length).clone();
 
     for (const def of LEVEL.stations) {
-      const st = new Station(def, this.road, this.models, this.tweens);
+      const st = new Station(def, this.road, this.models, this.tweens, this.world.propMaterial);
       this.root.add(st.group);
-      const setLabel = hud.addLabel(st.labelAnchor, st.remaining);
-      st.onCountChange = () => setLabel(st.remaining);
       this.stations.push(st);
     }
 
@@ -92,8 +90,8 @@ export class Game {
       pts.push(p.clone().setX(p.x - 1.1), p.clone().setX(p.x + 1.1), p.clone().setZ(p.z + 1.1));
     }
     for (const st of this.stations) {
-      for (const p of st.queue) pts.push(p.root.position.clone().setY(1.3));
-      pts.push(st.labelAnchor.clone().setY(3.2));
+      for (const p of st.spots()) pts.push(p.setY(1.3));
+      pts.push(st.signTop.clone());
     }
     pts.push(LOT.gate.clone().setX(LOT.gate.x - 0.6));
     for (const b of this.buses) {
@@ -506,7 +504,6 @@ export class Game {
   dispose() {
     this.ended = true;
     this.stage.scene.remove(this.root);
-    this.hud.clearLabels();
     this.hud.showHand(null);
   }
 }

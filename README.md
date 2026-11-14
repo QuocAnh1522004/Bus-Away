@@ -22,7 +22,7 @@ npm run typecheck
 | Buses wait in columns, one colour each, 4 / 6 / 10 seats | `LEVEL.columns` in [src/game/level.ts](src/game/level.ts); models `Vehicle_04/06/10` |
 | Only the **front** bus of a column can go; tap to send it | `Game.tryLaunch` (non-front -> shake + toast) |
 | Max buses on the road = **CAPACITY** | `LEVEL.capacity` (3), HUD "ROAD" pill, refused taps flash it |
-| Stations spawn passengers in a single queue | `Station` (8 visible, the rest counted on the sign) |
+| Stations spawn passengers in a single queue | `Station`: the line leaves the road and curls away; passengers walk out of the tunnel at the tail; a signpost at the head shows how many are left |
 | A passenger boards only if: head of queue + same colour + free seat | `Game.canBoard` / `Game.board` |
 | Buses drive clockwise and stop only when they can board | `Game.updateTraffic` (decides ~2.6 m before the stop, brakes smoothly) |
 | Full -> close lid -> gate -> leave, CAPACITY -1 | `Bus.closeLid`, `Game.leaveThroughGate` |
@@ -60,7 +60,10 @@ src/
 The UI is a DOM layer (`#ui`) fully decoupled from the WebGL canvas
 ([src/game/Hud.ts](src/game/Hud.ts)):
 
-- `.world`: screen-space widgets anchored to 3D points (station counters, hint hand), projected each frame.
+- `.world`: screen-space widgets anchored to 3D points (the hint hand), projected each frame.
+  Station counters are deliberately *not* DOM: they are drawn in 3D on the signpost screen
+  ([src/game/Counter.ts](src/game/Counter.ts), a 256×128 canvas texture redrawn only on change),
+  so passengers walking in front of a sign correctly hide it.
 - `.frame`: a **design-resolution container**, 1080×1920 in portrait and 3413×1920 in landscape.
   It is uniformly scaled to fit and centred. All HUD layout (ROAD pill, tip, toast, PLAY NOW, end card)
   is in design pixels, so it looks identical on any aspect ratio. The CTA is bottom-centre in portrait
