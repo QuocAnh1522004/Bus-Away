@@ -1,0 +1,513 @@
+import { Group, Plane, Raycaster, Vector2, Vector3 } from 'three';
+import type { Assets } from '../engine/assets';
+import { Path } from '../engine/path';
+import { sfx } from '../engine/sfx';
+import type { Stage } from '../engine/stage';
+import { ease, lerpAngle, Tweens } from '../engine/tween';
+import { notifyGameEnd } from '../playable/sdk';
+import roadPathData from '../assets/gen/road-path.json';
+import { Bus } from './Bus';
+import type { Hud } from './Hud';
+import { LEVEL, LOT, type BusDef } from './level';
+import { Models } from './models';
+import { SEAT_SCALE, STAND_SCALE, type Passenger } from './Passenger';
+import { Station } from './Station';
+import { World } from './World';
+
+const GAP = 0.55; // bumper-to-bumper distance in traffic
+const ROAD_SPEED = 7;
+const LOT_SPEED = 6.5;
+const HINT_DELAY = 3.2;
+
+type Waypoint = [Vector3, Vector3]; // position, heading
+
+/**
+ * Game rules (from the brief):
+ * - Columns of buses; only the FRONT bus of a column (or a parked bus) can be tapped onto the road.
+ * - At most CAPACITY buses on the road; when full, taps are refused.
+ * - Buses drive the loop clockwise and stop at a station only if (1) not full and (2) the head of
+ *   the queue has the bus colour. Passengers board one by one while that stays true.
+ * - Full bus: close lid -> through the gate -> leaves (frees a road slot).
+ * - Not full at the end of the loop: parks in the first free slot (frees a road slot).
+ *   No free slot -> LOSE. All buses gone -> WIN.
+ */
+export class Game {
+  readonly root = new Group();
+  readonly tweens = new Tweens();
+  private readonly models: Models;
+  private readonly world: World;
+  private readonly road: Path;
+  private readonly stations: Station[] = [];
+  private readonly columns: Bus[][] = [];
+  private readonly slots: (Bus | null)[] = LEVEL.slots.map(() => null);
+  private readonly buses: Bus[] = [];
+  private onRoad = 0;
+  private ended = false;
+  private idle = 0;
+  private hintBus: Bus | null = null;
+  private readonly entry: Vector3;
+  private readonly exit: Vector3;
+  private readonly raycaster = new Raycaster();
+  /** Exiting buses that still hold the gate arm up. */
+  private readonly atGate = new Set<Bus>();
+
+  constructor(
+    private readonly stage: Stage,
+    assets: Assets,
+    private readonly hud: Hud,
+  ) {
+    stage.scene.add(this.root);
+    this.models = new Models(assets);
+    // Baked centerline runs left->right on the authoring axis; reverse it = clockwise on screen.
+    this.road = Path.fromXZ((roadPathData as number[][]).slice().reverse());
+    this.world = new World(this.root, this.models, assets, this.road, this.tweens);
+    this.entry = this.road.pointAt(0).clone();
+    this.exit = this.road.pointAt(this.road.length).clone();
+
+    for (const def of LEVEL.stations) {
+      const st = new Station(def, this.road, this.models, this.tweens);
+      this.root.add(st.group);
+      const setLabel = hud.addLabel(st.labelAnchor, st.remaining);
+      st.onCountChange = () => setLabel(st.remaining);
+      this.stations.push(st);
+    }
+
+    LEVEL.columns.forEach((col, c) => {
+      const list: Bus[] = [];
+      col.buses.forEach((def: BusDef) => {
+        const bus = new Bus(def, this.models, this.tweens);
+        bus.column = c;
+        list.push(bus);
+        this.buses.push(bus);
+        this.root.add(bus.root);
+      });
+      this.columns.push(list);
+      this.layoutColumn(c, true);
+    });
+
+    // Frame what matters: road loop, station queues (head height), slots, gate, bus columns.
+    const pts: Vector3[] = [];
+    for (let s = 0; s <= this.road.length; s += 1) {
+      const p = this.road.pointAt(s);
+      pts.push(p.clone().setX(p.x - 1.1), p.clone().setX(p.x + 1.1), p.clone().setZ(p.z + 1.1));
+    }
+    for (const st of this.stations) {
+      for (const p of st.queue) pts.push(p.root.position.clone().setY(1.3));
+      pts.push(st.labelAnchor.clone().setY(3.2));
+    }
+    pts.push(LOT.gate.clone().setX(LOT.gate.x - 0.6));
+    for (const b of this.buses) {
+      const p = b.root.position;
+      pts.push(new Vector3(p.x - 1, 0, p.z - b.halfLen - 0.4), new Vector3(p.x + 1, 0, p.z - b.halfLen - 0.4));
+    }
+    stage.frame(pts);
+
+    hud.setCapacity(0);
+    hud.showTip('Tap a bus to pick up its colour!');
+    this.updateHint(true);
+  }
+
+  // ------------------------------------------------------------------ input
+
+  /** Tap at client coords. */
+  tap(x: number, y: number) {
+    if (this.ended) return;
+    sfx.unlock();
+    this.idle = 0;
+    this.hud.showTip(null);
+    const bus = this.pick(x, y);
+    if (!bus) return;
+    this.tryLaunch(bus);
+  }
+
+  private pick(x: number, y: number): Bus | null {
+    const ndc = new Vector2((x / this.stage.width) * 2 - 1, -(y / this.stage.height) * 2 + 1);
+    this.raycaster.setFromCamera(ndc, this.stage.camera);
+    let best: Bus | null = null;
+    let bestD = Infinity;
+    // Intersect two horizontal planes (roof height and ground) -> forgiving hit test on footprints.
+    for (const h of [0.9, 0.3]) {
+      const hit = new Vector3();
+      if (!this.raycaster.ray.intersectPlane(new Plane(new Vector3(0, 1, 0), -h), hit)) continue;
+      for (const b of this.buses) {
+        if (b.state !== 'queued' && b.state !== 'parked') continue;
+        const local = b.root.worldToLocal(hit.clone());
+        if (Math.abs(local.x) < 1.15 && Math.abs(local.z) < b.halfLen + 0.4) {
+          const d = local.lengthSq();
+          if (d < bestD) {
+            bestD = d;
+            best = b;
+          }
+        }
+      }
+      if (best) break;
+    }
+    return best;
+  }
+
+  /** Snapshot for tooling (DEV bot / tests). */
+  debugState() {
+    return {
+      ended: this.ended,
+      won: this.ended && this.buses.every((b) => b.state === 'gone'),
+      onRoad: this.onRoad,
+      heads: this.stations.map((s) => s.head()),
+      remaining: this.stations.map((s) => s.remaining),
+      tappable: [...this.columns.map((c) => c[0]).filter(Boolean), ...this.slots.filter(Boolean)] as Bus[],
+      slotsFree: this.slots.filter((s) => s === null).length,
+      buses: this.buses.map((b) => `${b.color}${b.seats}:${b.state}:${b.reserved}` + (b.path ? `[s=${b.s.toFixed(2)}/${b.path.length.toFixed(2)} v=${b.v.toFixed(2)} stop=${b.stopAt}]` : '')),
+    };
+  }
+
+  launch(bus: Bus) {
+    this.tryLaunch(bus);
+  }
+
+  private tryLaunch(bus: Bus) {
+    if (bus.state === 'queued' && this.columns[bus.column][0] !== bus) {
+      bus.shake();
+      sfx.denied();
+      this.hud.toast('Only the front bus can go!');
+      return;
+    }
+    if (this.onRoad >= LEVEL.capacity) {
+      bus.shake();
+      sfx.denied();
+      this.hud.warnCapacity();
+      this.hud.toast('The road is full!');
+      return;
+    }
+    sfx.tap();
+    bus.bounce(0.8);
+    bus.flash();
+    this.onRoad++;
+    this.hud.setCapacity(this.onRoad);
+
+    const from = bus.root.position.clone();
+    let path: Path;
+    if (bus.state === 'queued') {
+      const col = this.columns[bus.column];
+      col.shift();
+      this.layoutColumn(bus.column, false);
+      path = this.pathFromColumn(from);
+    } else {
+      this.slots[bus.slot] = null;
+      bus.slot = -1;
+      path = this.pathFromSlot(from);
+    }
+    bus.state = 'toRoad';
+    bus.follow(path, { vmax: LOT_SPEED, onEnd: () => this.joinRoad(bus) });
+    this.updateHint(false);
+  }
+
+  // ------------------------------------------------------------------ lifecycle
+
+  private joinRoad(bus: Bus) {
+    bus.state = 'road';
+    bus.visited.clear();
+    bus.follow(this.road, { keepSpeed: true, vmax: ROAD_SPEED, onEnd: () => this.roadEnd(bus) });
+  }
+
+  private roadEnd(bus: Bus) {
+    this.onRoad--;
+    this.hud.setCapacity(this.onRoad);
+    if (bus.full) return this.leaveThroughGate(bus);
+    const slot = this.slots.findIndex((s) => s === null);
+    if (slot < 0) return this.lose(bus);
+    this.slots[slot] = bus;
+    bus.slot = slot;
+    bus.state = 'toSlot';
+    this.world.pulseSlot(slot);
+    const sx = LEVEL.slots[slot];
+    const turnAt = new Vector3(sx + 1.9, 0, LOT.laneTop);
+    const fwd = this.smoothPath([
+      [this.exit, new Vector3(0, 0, -1)],
+      [new Vector3(-5.35, 0, LOT.laneTop), new Vector3(1, 0, 0)],
+      [turnAt, new Vector3(1, 0, 0)],
+    ]);
+    const back = this.smoothPath([
+      [turnAt, new Vector3(-1, 0, 0)],
+      [new Vector3(sx, 0, LOT.slotZ), new Vector3(0, 0, -1)],
+    ]);
+    bus.follow(fwd, {
+      keepSpeed: true,
+      vmax: LOT_SPEED,
+      onEnd: () =>
+        bus.follow(back, {
+          reverse: true,
+          vmax: 4,
+          onEnd: () => {
+            bus.state = 'parked';
+            bus.path = null;
+            bus.bounce(0.6);
+            sfx.park();
+            this.refreshHint();
+          },
+        }),
+    });
+  }
+
+  private leaveThroughGate(bus: Bus) {
+    bus.state = 'exiting';
+    this.world.openGate();
+    sfx.exit();
+    const path = this.smoothPath([
+      [this.exit, new Vector3(0, 0, -1)],
+      [new Vector3(-7.3, 0, LOT.laneTop), new Vector3(-1, 0, 0)],
+      [LOT.exitFar.clone(), new Vector3(-1, 0, 0)],
+    ]);
+    this.atGate.add(bus);
+    bus.follow(path, {
+      keepSpeed: true,
+      vmax: 9,
+      onEnd: () => {
+        bus.state = 'gone';
+        bus.root.visible = false;
+        this.checkWin();
+      },
+    });
+  }
+
+  private canBoard(bus: Bus, st: Station) {
+    return !bus.full && !bus.lidClosed && st.head() === bus.color;
+  }
+
+  private async board(bus: Bus, st: Station) {
+    bus.boarding = true;
+    const jumps: Promise<void>[] = [];
+    while (this.canBoard(bus, st) && !this.ended) {
+      const p = st.takeHead()!;
+      const seat = bus.reserved++;
+      jumps.push(this.jumpIntoSeat(p, bus, seat));
+      sfx.board(bus.fill);
+      await this.tweens.wait(0.085);
+    }
+    await Promise.all(jumps);
+    if (bus.full) {
+      await bus.closeLid();
+      sfx.lid();
+      bus.bounce(1);
+      await this.tweens.wait(0.08);
+    }
+    bus.boarding = false;
+    bus.stopAt = null;
+    this.refreshHint();
+  }
+
+  private async jumpIntoSeat(p: Passenger, bus: Bus, seat: number) {
+    const from = p.root.position.clone();
+    const local = bus.seatLocal(seat);
+    bus.body.updateWorldMatrix(true, false);
+    const to = bus.body.localToWorld(local.clone());
+    const h0 = p.root.rotation.y;
+    const h1 = bus.root.rotation.y;
+    p.play('Walk', 0.05);
+    this.tweens.kill(p);
+    p.moveId++;
+    await this.tweens.to(
+      0.3,
+      (k) => {
+        p.root.position.lerpVectors(from, to, k);
+        p.root.position.y += Math.sin(k * Math.PI) * 1.1;
+        p.root.rotation.y = lerpAngle(h0, h1, k);
+        p.root.scale.setScalar(STAND_SCALE + (SEAT_SCALE - STAND_SCALE) * k);
+      },
+      { ease: ease.linear },
+    );
+    bus.body.add(p.root);
+    p.root.position.copy(local);
+    p.root.rotation.set(0, 0, 0);
+    p.root.scale.setScalar(SEAT_SCALE);
+    p.play('Sit', 0.05);
+    bus.passengers.push(p);
+    bus.bounce(0.25);
+    void this.tweens.wait(0.2).then(() => {
+      p.update(0.2);
+      p.frozen = true;
+    });
+  }
+
+  // ------------------------------------------------------------------ frame
+
+  update(dt: number) {
+    this.tweens.update(dt);
+    this.updateTraffic(dt);
+    for (const b of this.buses) {
+      if (b.state === 'queued' || b.state === 'toSlot' || b.state === 'exiting') {
+        if (b.path) b.move(dt);
+      }
+      for (const p of b.passengers) p.update(dt);
+    }
+    for (const st of this.stations) st.update(dt);
+    for (const b of this.atGate) {
+      // lower the arm once the bus is clear of it
+      if (b.root.position.x < LOT.gate.x - b.halfLen - 0.8) {
+        this.atGate.delete(b);
+        this.world.closeGate();
+      }
+    }
+
+    if (!this.ended) {
+      this.idle += dt;
+      if (this.idle > HINT_DELAY && !this.hintBus) this.updateHint(true);
+    }
+    this.hud.update(dt, this.stage.camera, this.stage.width, this.stage.height);
+  }
+
+  /**
+   * Single-lane traffic: everything heading to or on the road is ordered on one virtual axis
+   * (u < 0 = still in the lot, distance to the road entry). Each bus may not get closer than
+   * GAP to the one in front.
+   */
+  private updateTraffic(dt: number) {
+    const movers = this.buses.filter((b) => b.state === 'toRoad' || b.state === 'road');
+    const u = (b: Bus) => (b.state === 'road' ? b.s : b.s - b.path!.length);
+    movers.sort((a, b) => u(b) - u(a));
+    let prev: Bus | null = null;
+    for (const b of movers) {
+      let limitU = Infinity;
+      // (a leader that just left the road this frame no longer constrains anyone)
+      if (prev && (prev.state === 'road' || prev.state === 'toRoad')) limitU = u(prev) - (prev.halfLen + b.halfLen + GAP);
+      const limit = b.state === 'road' ? limitU : limitU + b.path!.length;
+
+      if (b.state === 'road') {
+        // Station decisions a little before arrival (enough to brake smoothly).
+        this.stations.forEach((st, i) => {
+          if (b.visited.has(i)) return;
+          const d = st.s - b.s;
+          if (d < 2.6) {
+            b.visited.add(i);
+            if (d > -0.2 && this.canBoard(b, st)) b.stopAt = st.s;
+          }
+        });
+      }
+      b.move(dt, limit);
+      if (b.state === 'road' && b.stopAt !== null && !b.boarding && Math.abs(b.s - b.stopAt) < 1e-3) {
+        const st = this.stations.find((s) => Math.abs(s.s - b.stopAt!) < 1e-3)!;
+        if (this.canBoard(b, st)) void this.board(b, st);
+        else b.stopAt = null;
+      }
+      prev = b;
+    }
+  }
+
+  // ------------------------------------------------------------------ end states
+
+  private checkWin() {
+    if (this.ended || this.buses.some((b) => b.state !== 'gone')) return;
+    this.ended = true;
+    sfx.win();
+    notifyGameEnd();
+    setTimeout(() => this.hud.showEnd(true), 500);
+  }
+
+  private lose(bus: Bus) {
+    if (this.ended) return;
+    this.ended = true;
+    bus.state = 'gone';
+    bus.path = null;
+    bus.shake();
+    sfx.lose();
+    this.hud.toast('No free parking slot!', 3);
+    notifyGameEnd();
+    setTimeout(() => this.hud.showEnd(false), 900);
+  }
+
+  // ------------------------------------------------------------------ hints
+
+  /** Board state changed: if the hand is showing, retarget it. */
+  private refreshHint() {
+    if (this.hintBus) this.updateHint(true);
+  }
+
+  /** Hand pointer on a sensible next move (front bus whose colour is wanted at a station). */
+  private updateHint(show: boolean) {
+    if (!show || this.ended || this.onRoad >= LEVEL.capacity) {
+      this.hintBus = null;
+      this.hud.showHand(null);
+      return;
+    }
+    const heads = new Set(this.stations.map((s) => s.head()).filter(Boolean));
+    const candidates = [...this.columns.map((c) => c[0]).filter(Boolean), ...this.slots.filter(Boolean)] as Bus[];
+    const pick = candidates.find((b) => heads.has(b.color));
+    this.hintBus = pick ?? null;
+    this.hud.showHand(pick ? pick.root.position.clone().setY(1.0) : null);
+  }
+
+  // ------------------------------------------------------------------ layout / paths
+
+  private columnSlotZ(c: number) {
+    const zs: number[] = [];
+    let edge = LOT.columnFront;
+    for (const b of this.columns[c]) {
+      zs.push(edge - b.halfLen);
+      edge -= b.halfLen * 2 + LOT.columnGap;
+    }
+    return zs;
+  }
+
+  /** Place (or drive) column buses to their queue spots. */
+  private layoutColumn(c: number, instant: boolean) {
+    const x = LEVEL.columns[c].x;
+    const zs = this.columnSlotZ(c);
+    this.columns[c].forEach((b, i) => {
+      const target = new Vector3(x, 0, zs[i]);
+      if (instant) {
+        b.root.position.copy(target);
+        b.root.rotation.y = 0;
+        return;
+      }
+      const from = b.root.position.clone();
+      if (from.distanceTo(target) < 1e-3) return;
+      // staggered "shuffle forward", in game time
+      void this.tweens.wait(0.06 + i * 0.07).then(() => {
+        if (b.state !== 'queued') return;
+        b.follow(new Path([b.root.position.clone(), target]), { vmax: 5, onEnd: () => (b.path = null) });
+      });
+    });
+  }
+
+  private pathFromColumn(from: Vector3) {
+    const e = this.entry;
+    if (Math.abs(from.x - e.x) < 0.15) return new Path([from, e.clone()]);
+    const pts: Waypoint[] = [[from, Z]];
+    pts.push([new Vector3(from.x + 0.95, 0, LOT.laneMid), X]);
+    if (e.x - 0.95 - (from.x + 0.95) > 0.3) pts.push([new Vector3(e.x - 0.95, 0, LOT.laneMid), X]);
+    pts.push([new Vector3(e.x, 0, LOT.laneMid + 0.95), Z]);
+    pts.push([e.clone(), Z]);
+    return this.smoothPath(pts);
+  }
+
+  private pathFromSlot(from: Vector3) {
+    const e = this.entry;
+    if (e.x - from.x < 2.2) return this.smoothPath([[from, Z], [e.clone(), Z]]);
+    return this.smoothPath([
+      [from, Z],
+      [new Vector3(from.x + 0.95, 0, LOT.laneTop), X],
+      [new Vector3(e.x - 1.0, 0, LOT.laneTop), X],
+      [e.clone(), Z],
+    ]);
+  }
+
+  /** Hermite-style chain of cubic beziers through waypoints with given headings. */
+  private smoothPath(wps: Waypoint[]) {
+    const parts: Path[] = [];
+    for (let i = 0; i < wps.length - 1; i++) {
+      const [p0, d0] = wps[i];
+      const [p3, d3] = wps[i + 1];
+      const len = p0.distanceTo(p3) * 0.45;
+      parts.push(Path.bezier(p0, p0.clone().addScaledVector(d0, len), p3.clone().addScaledVector(d3, -len), p3, 20));
+    }
+    return Path.join(...parts);
+  }
+
+  dispose() {
+    this.ended = true;
+    this.stage.scene.remove(this.root);
+    this.hud.clearLabels();
+    this.hud.showHand(null);
+  }
+}
+
+const X = new Vector3(1, 0, 0);
+const Z = new Vector3(0, 0, 1);

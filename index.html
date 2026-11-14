@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+    <title>Bus Away</title>
+    <!-- Injected by MRAID ad networks at serve time; harmless 404 locally. -->
+    <script src="mraid.js"></script>
+    <style>
+      html, body { margin: 0; height: 100%; overflow: hidden; background: #bfe3ff; touch-action: none;
+        -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color: transparent;
+        font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+      #app { position: fixed; inset: 0; }
+      #app canvas { display: block; width: 100%; height: 100%; }
+      #loading { position: fixed; inset: 0; z-index: 50; display: flex; align-items: center; justify-content: center;
+        background: #bfe3ff; transition: opacity .25s; }
+      #loading.hide { opacity: 0; pointer-events: none; }
+      #loadbar { width: 56%; max-width: 360px; height: 16px; border-radius: 99px; background: rgba(255,255,255,.6); overflow: hidden; }
+      #loadfill { width: 0; height: 100%; border-radius: 99px; background: #ffb21c; transition: width .15s; }
+    </style>
+  </head>
+  <body>
+    <div id="app"></div>
+    <div id="loading"><div id="loadbar"><div id="loadfill"></div></div></div>
+    <script>
+      window.__loadProgress = function (p) {
+        var el = document.getElementById('loadfill');
+        if (el) el.style.width = Math.max(0, Math.min(1, p)) * 100 + '%';
+      };
+    </script>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
