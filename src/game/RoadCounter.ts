@@ -1,4 +1,5 @@
 import { CanvasTexture, LinearFilter, Mesh, PlaneGeometry, ShaderMaterial, Vector3 } from 'three';
+import { GAME_FONT } from '../engine/font';
 
 /**
  * ROAD counter (buses on the road / capacity), IN THE WORLD: a flat sign lying on the snow inside
@@ -153,7 +154,7 @@ export class RoadCounter {
     c.restore();
 
     // "n/cap": white, thick navy outline
-    c.font = '900 122px system-ui,-apple-system,"Segoe UI",Roboto,sans-serif';
+    c.font = `800 128px ${GAME_FONT}`;
     c.textAlign = 'center';
     c.textBaseline = 'middle';
     c.lineJoin = 'round';

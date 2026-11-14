@@ -1,5 +1,6 @@
 import { ColorManagement, Vector3 } from 'three';
 import { loadAssets } from './engine/assets';
+import { loadGameFont } from './engine/font';
 import { sfx } from './engine/sfx';
 import { Stage } from './engine/stage';
 import { Game } from './game/Game';
@@ -21,7 +22,7 @@ async function boot() {
   const params = new URLSearchParams(location.search);
   const view = import.meta.env.DEV ? params.get('view') : null;
 
-  const assets = await loadAssets((p) => window.__loadProgress?.(p * 0.9));
+  const [assets] = await Promise.all([loadAssets((p) => window.__loadProgress?.(p * 0.9)), loadGameFont()]);
 
   if (view) {
     const { runDebugView } = await import('./debug/views');

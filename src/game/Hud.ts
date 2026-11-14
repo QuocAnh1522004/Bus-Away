@@ -1,4 +1,5 @@
 import { Vector3, type Camera } from 'three';
+import { GAME_FONT } from '../engine/font';
 import logoUrl from '../assets/gen/logo.webp?url';
 
 /**
@@ -24,7 +25,9 @@ const BAND_BOTTOM = 200; // PLAY NOW, bottom-centre in both orientations
 
 const CSS = `
 #ui{position:fixed;inset:0;pointer-events:none;z-index:10;overflow:hidden;color:#fff;
-  font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;--s:1}
+  font-family:${GAME_FONT};line-height:1.15;--s:1}
+/* Baloo 2 tops out at 800: a hair of same-colour outline gives it the reference's chunkier weight */
+#ui .tip,#ui .toast,#ui .cta,#ui .pill{-webkit-text-stroke:.045em currentColor;paint-order:stroke fill}
 #ui *{box-sizing:border-box}
 #ui .world,#ui .dim{position:absolute;inset:0}
 #ui .frame{position:absolute;left:0;top:0;transform-origin:0 0}
@@ -58,11 +61,11 @@ const CSS = `
   background:rgba(32,46,86,.88);font-weight:900;font-size:46px;white-space:nowrap;transition:opacity .3s;animation:bob 1.4s ease-in-out infinite}
 .tip.hide{opacity:0}
 @keyframes bob{50%{transform:translate(-50%,-8px)}}
-.toast{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%) scale(.85);opacity:0;transition:.25s;padding:22px 56px;border-radius:999px;
+.toast{position:absolute;left:50%;top:57%; /* just under the middle: clear of the ROAD counter (it punches at the same time) */transform:translate(-50%,-50%) scale(.85);opacity:0;transition:.25s;padding:22px 56px;border-radius:999px;
   background:rgba(0,0,0,.82);font-weight:800;font-size:48px;white-space:nowrap}
 .toast.show{opacity:1;transform:translate(-50%,-50%) scale(1)}
 .cta{position:absolute;left:50%;bottom:56px;translate:-50% 0;pointer-events:auto;cursor:pointer;border:0;padding:26px 96px;border-radius:999px;
-  font:900 56px system-ui,sans-serif;color:#fff;background:linear-gradient(#5fd35a,#2ea33a);box-shadow:0 9px 0 #1d7a28;animation:breathe 1.6s ease-in-out infinite}
+  font:800 56px ${GAME_FONT};color:#fff;background:linear-gradient(#5fd35a,#2ea33a);box-shadow:0 9px 0 #1d7a28;animation:breathe 1.6s ease-in-out infinite}
 @keyframes breathe{50%{scale:1.07}}
 /* PLAY NOW lives outside the frame: pinned to the real bottom-centre of the screen, sized with --s */
 #ui .main-cta{bottom:calc(56px*var(--s) + env(safe-area-inset-bottom,0px));padding:calc(26px*var(--s)) calc(96px*var(--s));

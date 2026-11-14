@@ -8,7 +8,7 @@
 //
 // Run: npm run assets
 import { execFileSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { basename, join, resolve } from 'node:path';
 import { NodeIO } from '@gltf-transform/core';
@@ -114,13 +114,14 @@ writeFileSync(glbPath, await io.writeBinary(doc));
 
 // ---------------------------------------------------------------- textures
 // [file, max size, format]. Masks/data textures stay lossless; size = what the shader really needs.
+// (Sizes raised for sharpness on high-DPI phones: the build is far under the 2 MB Meta limit.)
 const TEXTURES = [
-  ['Vehicle.png', 256, 'lossless'],
+  ['Vehicle.png', 512, 'lossless'], // full res: bus windows / trims stay crisp up close
   ['Asset_Texture.png', 64, 'lossless'], // vertical gradient strips: 64px is visually identical
-  ['Matcap.png', 128, 'lossless'], // matcap lookups are low-frequency
-  ['FakeShadow.png', 128, 'lossless'], // soft blur needs a little resolution
+  ['Matcap.png', 256, 'lossless'], // smoother highlights on the rounded bodies
+  ['FakeShadow.png', 256, 'lossless'], // soft blur: 256 removes the visible stepping
   ['Road_Mask.png', 128, 'lossless'],
-  ['slot.png', 128, 'lossless'],
+  ['slot.png', 320, 'lossless'], // full res (180x318): crisp "P" and dashes
 ];
 for (const [file, size, mode] of TEXTURES) {
   const out = join(OUT, file.replace(/\.png$/, '.webp'));
@@ -145,6 +146,16 @@ async function buildLogo() {
     .composite([{ input: mask, blend: 'dest-in' }])
     .webp({ quality: 88, alphaQuality: 90, effort: 6 })
     .toFile(join(OUT, 'logo.webp'));
+}
+
+// ---------------------------------------------------------------- game font
+// Baloo 2 ExtraBold (SIL OFL, art-src/fonts), subset to printable ASCII: every HUD / sign string.
+await buildFont();
+async function buildFont() {
+  const { default: subsetFont } = await import('subset-font');
+  const src = readFileSync(join(SRC, 'fonts', 'Baloo2-ExtraBold.woff2'));
+  const chars = Array.from({ length: 95 }, (_, i) => String.fromCharCode(32 + i)).join('');
+  writeFileSync(join(OUT, 'game-font.woff2'), await subsetFont(src, chars, { targetFormat: 'woff2' }));
 }
 
 rmSync(tmp, { recursive: true, force: true });

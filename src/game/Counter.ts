@@ -1,4 +1,5 @@
 import { CanvasTexture, LinearFilter, Mesh, PlaneGeometry, ShaderMaterial } from 'three';
+import { GAME_FONT } from '../engine/font';
 
 /**
  * The passenger counter on a station's sign screen, rendered IN 3D (a 256x128 canvas texture on a
@@ -45,7 +46,7 @@ export class Counter {
     const c = this.ctx;
     c.fillStyle = '#2b3a6b';
     c.fillRect(0, 0, 256, 128);
-    c.font = '900 92px system-ui,-apple-system,"Segoe UI",Roboto,sans-serif';
+    c.font = `800 96px ${GAME_FONT}`;
     c.textAlign = 'center';
     c.textBaseline = 'middle';
     c.shadowColor = '#6ec3ff';
