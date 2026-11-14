@@ -23,32 +23,36 @@ export const LEVEL = {
   capacity: 3,
   /** Columns of buses, front first. x = world x of the column. */
   columns: [
-    { x: 2.49, buses: [{ color: 'red', seats: 6 }, { color: 'blue', seats: 4 }, { color: 'green', seats: 10 }] },
-    { x: 0.55, buses: [{ color: 'blue', seats: 6 }, { color: 'yellow', seats: 4 }, { color: 'red', seats: 4 }] },
-    { x: -1.4, buses: [{ color: 'yellow', seats: 10 }, { color: 'green', seats: 6 }] },
-    { x: -3.35, buses: [{ color: 'green', seats: 4 }, { color: 'red', seats: 6 }] },
+    { x: 2.775, buses: [{ color: 'red', seats: 6 }, { color: 'blue', seats: 4 }, { color: 'green', seats: 10 }] },
+    { x: 0.925, buses: [{ color: 'blue', seats: 6 }, { color: 'yellow', seats: 4 }, { color: 'red', seats: 4 }] },
+    { x: -0.925, buses: [{ color: 'yellow', seats: 10 }, { color: 'green', seats: 6 }] },
+    { x: -2.775, buses: [{ color: 'green', seats: 4 }, { color: 'red', seats: 6 }] },
   ] as { x: number; buses: BusDef[] }[],
   stations: [
     { s: 6.6, queue: [...run('red', 6), ...run('blue', 6), ...run('yellow', 4), ...run('green', 4), ...run('red', 4), ...run('green', 6)] },
     { s: 24.6, queue: [...run('yellow', 10), ...run('green', 10), ...run('blue', 4), ...run('red', 6)] },
   ] as StationDef[],
   /** Parking slots, in "first free slot" order (nearest to the road exit first). */
-  slots: [-4.6, -2.75, -0.9, 0.95],
+  slots: [-2.775, -0.925, 0.925, 2.775],
 };
 
 /** Lot geometry (see level art: Ground_01 spans x[-7.5,7.5] z[-17.5,1]). */
+/**
+ * The road's ends sit in the lot's curb gaps at x = ±4.40 (entry +x = screen-left, exit -x =
+ * screen-right), so the lot is symmetric: slots and columns between the two lanes.
+ */
 export const LOT = {
-  slotZ: -2.25,
-  /** Upper lane between road ends and parking (bus centre z). */
-  laneTop: 0.3,
+  slotZ: -2.9,
+  /** Upper lane between road ends and parking (bus centre z), clear of the front curb. */
+  laneTop: -0.3,
   /** Lower lane between parking and the bus columns. */
-  laneMid: -4.75,
+  laneMid: -5.2,
   /** Front edge of the bus columns. */
-  columnFront: -5.75,
+  columnFront: -6.1,
   columnGap: 0.45,
   /** Gate barrier post (world) and exit lane end. */
-  gate: new Vector3(-7.05, 0, -0.75),
-  exitFar: new Vector3(-15, 0, 0.3),
+  gate: new Vector3(-6.3, 0, -1.65),
+  exitFar: new Vector3(-15, 0, -0.3),
 };
 
 /** Body length per model (m) — from the FBX bounds. */

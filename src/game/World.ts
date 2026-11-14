@@ -71,9 +71,10 @@ export class World {
 
   /** Snowy pines + a snowman inside the loop and around the lot (procedural, instanced). */
   private addScenery() {
+    // [x, z, scale] — inside the loop, and outside it clear of the station queues
     const trees: [number, number, number][] = [
-      [-0.9, 4.6, 1.0], [0.4, 8.6, 1.15], [-1.7, 11.8, 0.9], [-2.3, 6.6, 0.75], [0.1, 12.6, 0.7],
-      [-8.7, 9.2, 1.1], [-9.4, 12.6, 0.9], [5.5, 13.4, 1.0], [6.4, 4.0, 0.9],
+      [1.0, 3.9, 1.0], [2.3, 7.9, 1.15], [0.2, 11.1, 0.9], [-0.4, 5.9, 0.75], [2.0, 11.9, 0.7],
+      [-6.9, 8.4, 1.1], [-7.6, 11.9, 0.9], [7.4, 12.7, 1.0], [8.4, 3.3, 0.9],
     ];
     const mat = createPropMaterial();
     const pines = new InstancedMesh(pineGeometry(), mat, trees.length);
@@ -86,7 +87,7 @@ export class World {
     });
     this.group.add(pines);
     const snowman = new Mesh(snowmanGeometry(), mat);
-    snowman.position.set(-1.1, 0, 8.2);
+    snowman.position.set(0.8, 0, 7.5);
     snowman.rotation.y = Math.PI + 0.4;
     snowman.scale.setScalar(0.75);
     this.group.add(snowman);

@@ -31,6 +31,7 @@ async function boot() {
   await whenAdReady();
   const stage = new Stage(document.getElementById('app')!, BG_COLOR);
   const hud = new Hud(LEVEL.capacity);
+  stage.insets = () => hud.safeInsets(); // gameplay framing stays clear of the UI bars
   let game = new Game(stage, assets, hud);
 
   hud.onCta = () => {

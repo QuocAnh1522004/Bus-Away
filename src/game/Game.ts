@@ -222,7 +222,7 @@ export class Game {
     const turnAt = new Vector3(sx + 1.9, 0, LOT.laneTop);
     const fwd = this.smoothPath([
       [this.exit, new Vector3(0, 0, -1)],
-      [new Vector3(-5.35, 0, LOT.laneTop), new Vector3(1, 0, 0)],
+      [new Vector3(this.exit.x + 1.0, 0, LOT.laneTop), new Vector3(1, 0, 0)],
       [turnAt, new Vector3(1, 0, 0)],
     ]);
     const back = this.smoothPath([
@@ -253,7 +253,7 @@ export class Game {
     sfx.exit();
     const path = this.smoothPath([
       [this.exit, new Vector3(0, 0, -1)],
-      [new Vector3(-7.3, 0, LOT.laneTop), new Vector3(-1, 0, 0)],
+      [new Vector3(this.exit.x - 1.2, 0, LOT.laneTop), new Vector3(-1, 0, 0)],
       [LOT.exitFar.clone(), new Vector3(-1, 0, 0)],
     ]);
     this.atGate.add(bus);
@@ -470,6 +470,8 @@ export class Game {
   private pathFromColumn(from: Vector3) {
     const e = this.entry;
     if (Math.abs(from.x - e.x) < 0.15) return new Path([from, e.clone()]);
+    // nearest column: one S-curve into the entry lane
+    if (e.x - from.x < 2.2) return this.smoothPath([[from, Z], [new Vector3(e.x, 0, LOT.laneMid + 0.6), Z], [e.clone(), Z]]);
     const pts: Waypoint[] = [[from, Z]];
     pts.push([new Vector3(from.x + 0.95, 0, LOT.laneMid), X]);
     if (e.x - 0.95 - (from.x + 0.95) > 0.3) pts.push([new Vector3(e.x - 0.95, 0, LOT.laneMid), X]);

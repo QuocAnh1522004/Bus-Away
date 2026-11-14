@@ -55,12 +55,27 @@ src/
   debug/              DEV-only tools (tree-shaken from production)
 ```
 
+### UI architecture
+
+The UI is a DOM layer (`#ui`) fully decoupled from the WebGL canvas
+([src/game/Hud.ts](src/game/Hud.ts)):
+
+- `.world`: screen-space widgets anchored to 3D points (station counters, hint hand), projected each frame.
+- `.frame`: a **design-resolution container**, 1080×1920 in portrait and 3413×1920 in landscape.
+  It is uniformly scaled to fit and centred. All HUD layout (ROAD pill, tip, toast, PLAY NOW, end card)
+  is in design pixels, so it looks identical on any aspect ratio. The CTA is bottom-centre in portrait
+  and bottom-right in landscape.
+- `Hud.safeInsets()` reports the screen bands the HUD occupies. The 3D camera fit
+  (`Stage.fitCamera`) keeps gameplay inside the free band, so the two layers never overlap.
+
 ### Dev tools (dev server only)
 
 - `?bot&speed=4` plays the level automatically and writes the result into `document.title`.
   `?bot=bad` plays badly, to exercise the lose path. `&snap=12` freezes the sim at t = 12 s.
 - `?cam=x,y,z,tx,ty,tz` overrides the camera for close-up inspection.
 - `?view=layout` shows the environment with the baked road path drawn as markers.
+- `?view=stick[&close&t=0.4]` shows stickman poses side by side. `&stress` runs a crossfade stress test
+  that reports the worst body twist and the minimum total animation weight.
 - `node tools/shot.mjs "?bot&speed=4&snap=8" shots/x.png 540 960` takes a headless screenshot.
 
 ### Authoring axis note

@@ -75,8 +75,18 @@ for (const mesh of root.listMeshes()) {
 for (const m of root.listMaterials()) m.dispose();
 for (const t of root.listTextures()) t.dispose();
 
-// Bake the road centerline (bus path) from the spline mesh BEFORE quantization.
-writeFileSync(join(OUT, 'road-path.json'), JSON.stringify(extractRoadCenterline(doc)));
+// Bake the road centerline (bus path) from the spline mesh BEFORE quantization, then snap the road
+// onto the lot: in the Cocos scene the road prefab carries an offset, and FBX2glTF exports both
+// meshes at their own origins. The lot has two 2 m gaps in its front curb; move the road so its two
+// 2 m end caps sit exactly in them, flush with the lot edge.
+const rawPath = extractRoadCenterline(doc);
+const offset = roadToLotOffset(doc, rawPath);
+const roadNode = root.listNodes().find((n) => n.getName() === 'SplineMesh');
+const rt = roadNode.getTranslation();
+roadNode.setTranslation([rt[0] + offset[0], rt[1], rt[2] + offset[1]]);
+const path = rawPath.map(([x, z]) => [+(x + offset[0]).toFixed(3), +(z + offset[1]).toFixed(3)]);
+console.log(`road snapped to lot by dx=${offset[0].toFixed(3)} dz=${offset[1].toFixed(3)}`);
+writeFileSync(join(OUT, 'road-path.json'), JSON.stringify(path));
 
 await doc.transform(
   resample(), // drop redundant animation keys
@@ -197,6 +207,43 @@ function extractRoadCenterline(document) {
   // Always run from the end with the smaller x (left on the authoring axis) to the other.
   if (path[0][0] > path[path.length - 1][0]) path.reverse();
   return path.map(([x, z]) => [+x.toFixed(3), +z.toFixed(3)]);
+}
+
+/** [dx, dz] that puts the road's end caps into the lot's curb gaps, flush with the lot edge. */
+function roadToLotOffset(document, path) {
+  const g = document.getRoot().listNodes().find((n) => n.getName() === 'Ground_01');
+  const m = g.getWorldMatrix();
+  const P = g.getMesh().listPrimitives()[0].getAttribute('POSITION');
+  const verts = [];
+  for (let i = 0; i < P.getCount(); i++) {
+    const p = P.getElement(i, []);
+    verts.push([m[0] * p[0] + m[4] * p[1] + m[8] * p[2] + m[12], m[1] * p[0] + m[5] * p[1] + m[9] * p[2] + m[13], m[2] * p[0] + m[6] * p[1] + m[10] * p[2] + m[14]]);
+  }
+  const lotEdge = Math.max(...verts.map((v) => v[2]));
+  // Curb occupancy along x: union of the x-extents of raised triangles at the front edge.
+  // The holes in that union are the road gaps.
+  const I = g.getMesh().listPrimitives()[0].getIndices().getArray();
+  const spans = [];
+  for (let t = 0; t < I.length; t += 3) {
+    const tri = [verts[I[t]], verts[I[t + 1]], verts[I[t + 2]]];
+    if (!tri.every((v) => v[1] > 0.05 && v[2] > lotEdge - 0.7)) continue;
+    spans.push([Math.min(...tri.map((v) => v[0])), Math.max(...tri.map((v) => v[0]))]);
+  }
+  spans.sort((a, b) => a[0] - b[0]);
+  const merged = [];
+  for (const sp of spans) {
+    const last = merged[merged.length - 1];
+    if (last && sp[0] <= last[1] + 1e-3) last[1] = Math.max(last[1], sp[1]);
+    else merged.push([...sp]);
+  }
+  const holes = [];
+  for (let i = 1; i < merged.length; i++) holes.push({ w: merged[i][0] - merged[i - 1][1], c: (merged[i][0] + merged[i - 1][1]) / 2 });
+  const gaps = holes.sort((a, b) => b.w - a.w).slice(0, 2).map((h) => h.c).sort((a, b) => a - b);
+  console.log(`lot curb gaps at x=${gaps.map((c) => c.toFixed(3)).join(', ')} (edge z=${lotEdge.toFixed(3)})`);
+  const ends = [path[0], path[path.length - 1]].sort((a, b) => a[0] - b[0]);
+  const dx = (gaps[0] - ends[0][0] + gaps[1] - ends[1][0]) / 2;
+  const dz = lotEdge - Math.max(ends[0][1], ends[1][1]) - 0.04; // both ends overlap the lot slightly: no seam
+  return [dx, dz];
 }
 
 function closestOnSegment(p, a, b) {

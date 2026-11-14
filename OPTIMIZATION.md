@@ -1,14 +1,14 @@
 # Optimization report — Bus Away playable
 
-**Final build: `dist/index.html` = 369.5 KB**, a single file with no external requests.
+**Final build: `dist/index.html` = 370.7 KB**, a single file with no external requests.
 It fits every major network limit, including Meta's 2 MB.
 
 | | Size |
 | --- | --- |
 | Source art (FBX 968 KB + PNG 750 KB) | 1,718 KB |
 | Runtime assets after the pipeline (GLB + WebP + path JSON) | **161 KB** (−90.6 %) |
-| Single-file build, uncompressed (`index.uncompressed.html`) | 910.8 KB |
-| Single-file build, self-extracting (`index.html`) | **369.5 KB** (−59 % vs uncompressed) |
+| Single-file build, uncompressed (`index.uncompressed.html`) | 912.4 KB |
+| Single-file build, self-extracting (`index.html`) | **370.7 KB** (−59 % vs uncompressed) |
 
 Run `npm run build` to reproduce. `tools/report-size.mjs` prints the breakdown and checks it against each network's limit.
 
@@ -47,7 +47,10 @@ The pipeline is fully scripted and reproducible.
 4. **Quantization** (KHR_mesh_quantization): positions/normals → int16, UVs → uint16, skin weights → uint8.
 5. **meshopt compression** (EXT_meshopt_compression, `high` level with octahedral normal filters).
    The decoder is about 28 KB, which pays for itself several times over.
-6. **Animation resampling**: redundant keyframes removed from Idle, Walk and Sit.
+6. **Animation baking at 30 fps** (`--anim-framerate bake30`), the clips' authoring rate. FBX2glTF's
+   default 24 fps bake samples between source keys, where the FBX Euler curves flip. That produced leg
+   twist spikes and a −127° knee on the last Walk frame. Then redundant keyframes are removed
+   (`resample`), and Walk is closed back to frame 0 at runtime so it loops seamlessly.
 7. **A free win:** quantization recentres each mesh on its own node. The wheel nodes therefore sit on
    their axles, so wheels can spin without any re-pivoting.
 
@@ -66,6 +69,13 @@ compression or premultiplied-alpha cleanup would corrupt the channels.
 | Road mask, slot | 10 KB | 4.6 KB | — |
 
 `Stripe.png` was unused and is not shipped.
+
+### Road placement, measured instead of eyeballed
+
+In the Cocos scene the road prefab carries an offset; FBX2glTF exports each mesh at its own origin.
+The pipeline finds the two road gaps in the lot's front curb (as holes in the x-coverage of the raised
+curb triangles: x = ±4.40, each 2.02 m wide) and the lot edge (z = 1.011). It then moves the road so its
+2.02 m end caps sit in the gaps, flush with the edge (dx = +1.905, dz = −0.719).
 
 ### Baked data instead of runtime work
 
@@ -97,7 +107,7 @@ produces 1.9 KB of JSON. No path editor, no hand-placed waypoints, and nothing t
   transfer size, and minified three.js plus base64 assets deflate very well. So the bundle is stored as
   `base64(deflateRaw(bundle))` with a **3.6 KB inflater** (fflate's `inflateSync` only). At boot it is
   inflated (a single synchronous pass over ~270 KB; not profiled on devices yet) and injected as a classic script.
-  Result: **910.8 KB → 369.5 KB**.
+  Result: **912.4 KB → 370.7 KB**.
   `dist/index.uncompressed.html` is kept for networks whose validators reject runtime script injection.
 
 ## 5. Runtime performance
