@@ -12,7 +12,7 @@ export function runLayout(assets: Assets) {
   const stage = new Stage(document.getElementById('app')!, BG_COLOR);
   const models = new Models(assets);
   stage.scene.add(models.prop('Ground_01'), models.prop('SplineMesh'));
-  const path = Path.fromXZ(roadPath as number[][], 0.05);
+  const path = Path.fromXZ(roadPath.path, 0.05);
   const box = new BoxGeometry(0.25, 0.25, 0.25);
   for (let s = 0; s <= path.length; s += 1) {
     const k = s / path.length;

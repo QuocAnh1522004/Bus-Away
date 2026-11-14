@@ -1,5 +1,6 @@
 import { Vector3 } from 'three';
 import type { ColorName } from './palette';
+import roadPath from '../assets/gen/road-path.json';
 
 /**
  * Level 1. All coordinates are world space (metres). Authoring axis note: the camera looks from -Z
@@ -25,22 +26,28 @@ export const LEVEL = {
   capacity: 3,
   /** Columns of buses, front first. x = world x of the column. */
   columns: [
-    { x: 2.775, buses: [{ color: 'red', seats: 6 }, { color: 'blue', seats: 4 }, { color: 'green', seats: 10 }] },
-    { x: 0.925, buses: [{ color: 'blue', seats: 6 }, { color: 'yellow', seats: 4 }, { color: 'red', seats: 4 }] },
-    { x: -0.925, buses: [{ color: 'yellow', seats: 10 }, { color: 'green', seats: 6 }] },
-    { x: -2.775, buses: [{ color: 'green', seats: 4 }, { color: 'red', seats: 6 }] },
+    { x: 3.3, buses: [{ color: 'red', seats: 6 }, { color: 'blue', seats: 4 }, { color: 'green', seats: 10 }] },
+    { x: 1.1, buses: [{ color: 'blue', seats: 6 }, { color: 'yellow', seats: 4 }, { color: 'red', seats: 4 }] },
+    { x: -1.1, buses: [{ color: 'yellow', seats: 10 }, { color: 'green', seats: 6 }] },
+    { x: -3.3, buses: [{ color: 'green', seats: 4 }, { color: 'red', seats: 6 }] },
   ] as { x: number; buses: BusDef[] }[],
   stations: [
     { s: 6.6, queue: [...run('red', 6), ...run('blue', 6), ...run('yellow', 4), ...run('green', 4), ...run('red', 4), ...run('green', 6)] },
-    { s: 24.6, queue: [...run('yellow', 10), ...run('green', 10), ...run('blue', 4), ...run('red', 6)] },
+    { s: 23.0, queue: [...run('yellow', 10), ...run('green', 10), ...run('blue', 4), ...run('red', 6)] },
   ] as StationDef[],
   /** Parking slots, in "first free slot" order (nearest to the road exit first). */
-  slots: [-2.775, -0.925, 0.925, 2.775],
+  slots: [-3.3, -1.1, 1.1, 3.3],
 };
 
 /** Lot geometry (see level art: Ground_01 spans x[-7.5,7.5] z[-17.5,1]). */
+/** Front edge (z) of the lot slab (Ground_01), measured by tools/build-assets.mjs. */
+export const LOT_EDGE_Z = 1.011;
+
+/** Horizontal playfield stretch baked by tools/build-assets.mjs (road + lot meshes and the path). */
+export const STRETCH: number = roadPath.stretch;
+
 /**
- * The road's ends sit in the lot's curb gaps at x = ±4.40 (entry +x = screen-left, exit -x =
+ * The road's ends sit in the lot's curb gaps at x = ±4.40 * STRETCH (entry +x = screen-left, exit -x =
  * screen-right), so the lot is symmetric: slots and columns between the two lanes.
  */
 export const LOT = {
@@ -53,7 +60,7 @@ export const LOT = {
   columnFront: -6.1,
   columnGap: 0.45,
   /** Gate barrier post (world) and exit lane end. */
-  gate: new Vector3(-6.3, 0, -1.65),
+  gate: new Vector3(-4.4 * STRETCH - 1.7, 0, -1.65),
   exitFar: new Vector3(-15, 0, -0.3),
 };
 

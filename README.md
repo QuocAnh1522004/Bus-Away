@@ -76,10 +76,19 @@ The UI is a DOM layer (`#ui`) fully decoupled from the WebGL canvas
 - `?bot&speed=4` plays the level automatically and writes the result into `document.title`.
   `?bot=bad` plays badly, to exercise the lose path. `&snap=12` freezes the sim at t = 12 s.
 - `?cam=x,y,z,tx,ty,tz` overrides the camera for close-up inspection.
+- `?tilt=54&fov=32` tries other camera angles. `?measure` writes the on-screen scale (px per metre at the
+  buses and at the road) into `document.title`. The 54° default was picked this way on 9:16.
 - `?view=layout` shows the environment with the baked road path drawn as markers.
 - `?view=stick[&close&t=0.4]` shows stickman poses side by side. `&stress` runs a crossfade stress test
   that reports the worst body twist and the minimum total animation weight.
 - `node tools/shot.mjs "?bot&speed=4&snap=8" shots/x.png 540 960` takes a headless screenshot.
+
+### Camera and playfield
+
+The camera fits a set of gameplay points (road + snow banks, station queues and signs, gate, bus columns)
+inside the free band between the HUD bars, for any aspect. The default is tilted 54°, picked with `?measure`
+on 9:16. The road and lot are stretched ×1.3 horizontally at build time (`STRETCH` in
+[tools/build-assets.mjs](tools/build-assets.mjs)), so the road fills a 9:16 screen while 1080×1080 still fits.
 
 ### Authoring axis note
 

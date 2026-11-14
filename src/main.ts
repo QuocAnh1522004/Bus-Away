@@ -1,4 +1,4 @@
-import { ColorManagement } from 'three';
+import { ColorManagement, Vector3 } from 'three';
 import { loadAssets } from './engine/assets';
 import { sfx } from './engine/sfx';
 import { Stage } from './engine/stage';
@@ -76,6 +76,27 @@ async function boot() {
       return `calls=${i.render.calls} tris=${i.render.triangles} progs=${i.programs?.length} geo=${i.memory.geometries} tex=${i.memory.textures}`;
     };
   }
+
+  if (import.meta.env.DEV && params.has('measure')) setTimeout(() => {
+    // px per world metre at the bus columns and at the far road / queues (9:16 camera tuning)
+    const px = (x: number, z: number) => {
+      const a = new Vector3(x, 0, z).project(stage.camera);
+      const b = new Vector3(x + 1, 0, z).project(stage.camera);
+      return (Math.abs(b.x - a.x) / 2) * stage.width;
+    };
+    const fp = (window as unknown as { __fitPts: Vector3[] }).__fitPts;
+    let l = 9, r = -9, t = -9, b = 9;
+    for (const p of fp) {
+      const q = p.clone().project(stage.camera);
+      l = Math.min(l, q.x); r = Math.max(r, q.x); t = Math.max(t, q.y); b = Math.min(b, q.y);
+    }
+    const ins = stage.insets();
+    document.title = `NDC l=${l.toFixed(2)} r=${r.toFixed(2)} t=${t.toFixed(2)} b=${b.toFixed(2)} insets=${ins.top.toFixed(2)}/${ins.bottom.toFixed(2)} aspect=${stage.camera.aspect.toFixed(3)} | MEASURE buses=${px(0, -9).toFixed(1)}px/m road=${px(0, 14).toFixed(1)}px/m fit=${(window as unknown as { __fit: string }).__fit}`;
+    const d = document.createElement('pre');
+    d.style.cssText = 'position:fixed;left:0;bottom:0;z-index:99;margin:0;padding:4px;font:11px monospace;background:#000c;color:#0f0;white-space:pre-wrap';
+    d.textContent = document.title.replaceAll(' | ', '\n');
+    document.body.appendChild(d);
+  }, 1500);
 
   // Warm-up: compile every shader before the first visible frame (no hitch on first tap).
   stage.renderer.compile(stage.scene, stage.camera);

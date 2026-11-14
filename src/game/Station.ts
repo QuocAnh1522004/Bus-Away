@@ -10,13 +10,14 @@ import { Passenger, STAND_SCALE } from './Passenger';
 
 const VISIBLE = 7; // stickmen standing in line; the rest wait "inside" the station (sign counter)
 const SPACING = 0.6;
-const HEAD_OFFSET = 2.4; // road centre -> head of the queue (clear of the snow bank)
+const HEAD_OFFSET = 2.2; // road centre -> head of the queue (clear of the snow bank)
 const SIGN_OFFSET = 1.85; // road centre -> counter signpost (between the head and the road)
 
 /**
  * A bus stop: spawns passengers and keeps them in a single-file line that leaves the road
- * outward (away from the loop) and then curls back along it, like the original game.
- * A sign between the head and the road shows how many passengers are left; only the head boards.
+ * outward (away from the loop) and then curls along it, like the original game.
+ * A sign between the head and the road shows how many passengers are left; passengers walk out of
+ * a tunnel at the tail. Only the head boards.
  */
 export class Station {
   readonly group = new Group();
@@ -52,7 +53,7 @@ export class Station {
     // sign never hides the head passenger: -1 = back along the road, +1 = forward along it.
     const bend = def.bend ?? (t.z >= 0 ? -1 : 1);
     const at = (out: number, along: number) => c.clone().addScaledVector(n, out).addScaledVector(t, along);
-    this.line = Path.bezier(at(HEAD_OFFSET, 0), at(HEAD_OFFSET + 1.5, 0), at(HEAD_OFFSET + 2.3, 0.6 * bend), at(HEAD_OFFSET + 2.5, 2.4 * bend), 24);
+    this.line = Path.bezier(at(HEAD_OFFSET, 0), at(HEAD_OFFSET + 0.9, 0), at(HEAD_OFFSET + 1.4, 0.7 * bend), at(HEAD_OFFSET + 1.5, 2.6 * bend), 24);
 
     // Counter signpost between the head of the line and the road.
     const sign = new Mesh(signPoleGeometry(), propMaterial);

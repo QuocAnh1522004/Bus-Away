@@ -17,8 +17,8 @@ import { Vector3, type Camera } from 'three';
 // Both orientations are 1920 design-px tall, so UI keeps the same size relative to screen height.
 const PORTRAIT = { w: 1080, h: 1920 };
 const LANDSCAPE = { w: 3413, h: 1920 };
-/** Design-px bands the HUD occupies (top: pill + tip; bottom: CTA in portrait only). */
-const BAND_TOP = 250;
+/** Design-px bands the HUD reserves (top: ROAD pill; bottom: CTA in portrait only). */
+const BAND_TOP = 140; // ROAD pill only: the start tip may overlay the scene (it hides on the first tap)
 const BAND_BOTTOM_PORTRAIT = 200;
 const BAND_BOTTOM_LANDSCAPE = 40;
 
@@ -140,10 +140,13 @@ export class Hud {
     window.visualViewport?.addEventListener('resize', () => this.layout());
   }
 
+  private laidOut = { w: 0, h: 0 };
+
   /** Fit the design frame into the viewport (contain), centred. */
   layout() {
     const w = window.innerWidth;
     const h = window.innerHeight;
+    this.laidOut = { w, h };
     const d = w > h ? LANDSCAPE : PORTRAIT;
     const s = Math.min(w / d.w, h / d.h);
     this.frame.classList.toggle('land', w > h);
@@ -234,6 +237,7 @@ export class Hud {
 
   /** Per-frame: project the hint hand's 3D anchor into the world layer, tick the toast. */
   update(dt: number, camera: Camera, w: number, h: number) {
+    if (window.innerWidth !== this.laidOut.w || window.innerHeight !== this.laidOut.h) this.layout(); // missed resize event
     if (this.handTarget) {
       const p = v.copy(this.handTarget).project(camera);
       this.hand.style.transform = `translate(${((p.x + 1) / 2) * w}px,${((1 - p.y) / 2) * h}px) translate(-22%,-8%)`;

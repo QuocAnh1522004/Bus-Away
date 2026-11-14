@@ -1,10 +1,10 @@
-import { Group, InstancedMesh, Matrix4, Mesh, PlaneGeometry, Quaternion, Vector3, type Object3D } from 'three';
+import { BoxGeometry, Group, InstancedMesh, Matrix4, Mesh, PlaneGeometry, Quaternion, Vector3, type Object3D } from 'three';
 import { createDecalMaterial, createFlatMaterial } from '../engine/materials';
 import type { Path } from '../engine/path';
 import { createPropMaterial, pineGeometry, snowmanGeometry } from '../engine/procedural';
 import { ease, type Tweens } from '../engine/tween';
 import type { Assets } from '../engine/assets';
-import { LEVEL, LOT } from './level';
+import { LEVEL, LOT, LOT_EDGE_Z, STRETCH } from './level';
 import type { Models } from './models';
 
 /** Static environment: lot, road, gate barrier, parking decals. */
@@ -19,6 +19,7 @@ export class World {
 
   constructor(parent: Object3D, models: Models, assets: Assets, road: Path, private readonly tweens: Tweens) {
     this.group.add(models.prop('Ground_01'), models.prop('SplineMesh'));
+    this.addLotApron(models);
     this.addRoadDashes(road);
     this.addScenery();
 
@@ -50,6 +51,37 @@ export class World {
     parent.add(this.group);
   }
 
+  /**
+   * The art's lot slab is narrower than a portrait screen. A large plane just under it, shaded with
+   * the lot's own material and asphalt UV, continues the lot to the screen edges and below the
+   * bottom edge (the reference game's ground fills the whole lower screen too).
+   */
+  private addLotApron(models: Models) {
+    const geo = new PlaneGeometry(120, 80);
+    geo.rotateX(-Math.PI / 2);
+    geo.translate(0, -0.03, LOT_EDGE_Z - 0.12 - 40); // top edge tucked just under the lot's front curb
+    const uv = geo.getAttribute('uv');
+    for (let i = 0; i < uv.count; i++) uv.setXY(i, 0.743, 0.023); // asphalt texel of the road mask
+    this.group.add(new Mesh(geo, models.shared.road));
+
+    // The lot's front curb ends with the art slab (x = ±7.5 * STRETCH); carry it on along the apron.
+    // Same cross-section as the art curb (z 0.44..1.01, 0.43 high) and the same road-mask shading:
+    // light top, darker sides.
+    const half = 7.5 * STRETCH - 0.05;
+    const len = 60;
+    const curb = new BoxGeometry(len, 0.43, 0.57);
+    const n = curb.getAttribute('normal');
+    const cpos = curb.getAttribute('position');
+    const cuv = curb.getAttribute('uv');
+    // top: light texel; sides: mask gradient from light (top edge, v 0.356) to shaded (base, v 0.968)
+    for (let i = 0; i < cuv.count; i++) cuv.setXY(i, 0.266, n.getY(i) > 0.5 ? 0.074 : cpos.getY(i) > 0 ? 0.356 : 0.968);
+    for (const side of [-1, 1]) {
+      const c = new Mesh(curb, models.shared.road);
+      c.position.set(side * (half + len / 2), 0.215, (0.437 + LOT_EDGE_Z) / 2);
+      this.group.add(c);
+    }
+  }
+
   /** White centre-line dashes along the loop: one InstancedMesh. */
   private addRoadDashes(road: Path) {
     const geo = new PlaneGeometry(0.11, 0.42);
@@ -74,9 +106,12 @@ export class World {
   /** Snowy pines + a snowman inside the loop and around the lot (procedural, instanced). */
   private addScenery() {
     // [x, z, scale] — inside the loop, and outside it clear of the station queues
+    // [x, z, scale] in world space (after the playfield stretch)
     const trees: [number, number, number][] = [
-      [1.0, 3.9, 1.0], [2.3, 7.9, 1.15], [0.2, 11.1, 0.9], [-0.4, 5.9, 0.75], [2.0, 11.9, 0.7],
-      [-6.4, 13.2, 1.0], [6.6, 12.4, 1.0], [8.6, 9.6, 0.8],
+      // inside the loop
+      [1.3, 3.9, 1.0], [3.0, 7.9, 1.15], [0.3, 11.1, 0.9], [-0.5, 5.9, 0.75], [2.6, 11.9, 0.7],
+      // hugging the road's outside: top-left bend, and where each road leg meets the lot
+      [4.9, 14.3, 1.0], [8.1, 2.4, 0.9], [-7.4, 4.4, 0.95], [-8.7, 2.2, 0.8],
     ];
     const mat = this.propMaterial;
     const pines = new InstancedMesh(pineGeometry(), mat, trees.length);
@@ -89,7 +124,7 @@ export class World {
     });
     this.group.add(pines);
     const snowman = new Mesh(snowmanGeometry(), mat);
-    snowman.position.set(0.8, 0, 7.5);
+    snowman.position.set(1.05, 0, 7.5);
     snowman.rotation.y = Math.PI + 0.4;
     snowman.scale.setScalar(0.75);
     this.group.add(snowman);

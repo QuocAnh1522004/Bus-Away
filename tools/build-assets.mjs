@@ -84,9 +84,22 @@ const offset = roadToLotOffset(doc, rawPath);
 const roadNode = root.listNodes().find((n) => n.getName() === 'SplineMesh');
 const rt = roadNode.getTranslation();
 roadNode.setTranslation([rt[0] + offset[0], rt[1], rt[2] + offset[1]]);
-const path = rawPath.map(([x, z]) => [+(x + offset[0]).toFixed(3), +(z + offset[1]).toFixed(3)]);
 console.log(`road snapped to lot by dx=${offset[0].toFixed(3)} dz=${offset[1].toFixed(3)}`);
-writeFileSync(join(OUT, 'road-path.json'), JSON.stringify(path));
+
+// Stretch the playfield horizontally (road + lot, about x = 0) so the layout's aspect matches a 9:16
+// screen: the road then spans the full width on phones, and squarer screens (1:1) still fit because
+// the camera fit becomes height-bound. Both meshes scale about the same centre, so the road ends stay
+// in the curb gaps. Road/lot shaders are unlit (no normals), so a non-uniform scale is safe.
+const STRETCH = 1.3;
+for (const name of ['SplineMesh', 'Ground_01']) {
+  const n = root.listNodes().find((node) => node.getName() === name);
+  const t = n.getTranslation();
+  const s = n.getScale();
+  n.setTranslation([t[0] * STRETCH, t[1], t[2]]);
+  n.setScale([s[0] * STRETCH, s[1], s[2]]);
+}
+const path = rawPath.map(([x, z]) => [+((x + offset[0]) * STRETCH).toFixed(3), +(z + offset[1]).toFixed(3)]);
+writeFileSync(join(OUT, 'road-path.json'), JSON.stringify({ stretch: STRETCH, path }));
 
 await doc.transform(
   resample(), // drop redundant animation keys

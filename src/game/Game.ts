@@ -64,7 +64,7 @@ export class Game {
     stage.scene.add(this.root);
     this.models = new Models(assets);
     // Baked centerline runs left->right on the authoring axis; reverse it = clockwise on screen.
-    this.road = Path.fromXZ((roadPathData as number[][]).slice().reverse());
+    this.road = Path.fromXZ(roadPathData.path.slice().reverse());
     this.world = new World(this.root, this.models, assets, this.road, this.tweens);
     this.entry = this.road.pointAt(0).clone();
     this.exit = this.road.pointAt(this.road.length).clone();
@@ -73,6 +73,14 @@ export class Game {
       const st = new Station(def, this.road, this.models, this.tweens, this.world.propMaterial);
       this.root.add(st.group);
       this.stations.push(st);
+      if (import.meta.env.DEV) {
+        // level-design guard: queue + tunnel must stay off the road (centre -> bank edge ~1.45 m)
+        for (const p of st.spots()) {
+          let d = Infinity;
+          for (const q of this.road.points) d = Math.min(d, Math.hypot(p.x - q.x, p.z - q.z));
+          if (d < 1.8) console.warn(`station at s=${def.s}: (${p.x.toFixed(1)}, ${p.z.toFixed(1)}) is ${d.toFixed(2)} m from the road centre`);
+        }
+      }
     }
 
     LEVEL.columns.forEach((col, c) => {
@@ -88,22 +96,37 @@ export class Game {
       this.layoutColumn(c, true);
     });
 
-    // Frame what matters: road loop, station queues (head height), slots, gate, bus columns.
+    // Frame the gameplay: road loop (incl. snow banks), station queues + signs, gate, bus columns.
+    // On 9:16 this is width-bound by the road itself; on squarer screens it becomes height-bound and
+    // the same points still all fit.
     const pts: Vector3[] = [];
-    for (let s = 0; s <= this.road.length; s += 1) {
+    for (let s = 0; s <= this.road.length; s += 0.5) {
       const p = this.road.pointAt(s);
-      pts.push(p.clone().setX(p.x - 1.1), p.clone().setX(p.x + 1.1), p.clone().setZ(p.z + 1.1));
+      pts.push(p.clone().setX(p.x - 1.45), p.clone().setX(p.x + 1.45), p.clone().setZ(p.z + 1.45));
     }
     for (const st of this.stations) {
-      for (const p of st.spots()) pts.push(p.setY(1.3));
-      pts.push(st.signTop.clone());
+      for (const p of st.spots()) pts.push(p.clone().setX(p.x - 0.35).setY(1.2), p.clone().setX(p.x + 0.35).setY(1.2));
+      pts.push(st.signTop.clone().setX(st.signTop.x - 0.8), st.signTop.clone().setX(st.signTop.x + 0.8));
     }
-    pts.push(LOT.gate.clone().setX(LOT.gate.x - 0.6));
-    for (const b of this.buses) {
-      const p = b.root.position;
-      pts.push(new Vector3(p.x - 1, 0, p.z - b.halfLen - 0.4), new Vector3(p.x + 1, 0, p.z - b.halfLen - 0.4));
+    pts.push(LOT.gate.clone().setX(LOT.gate.x - 0.4));
+    // Only the FRONT bus of a column is tappable, so frame the front row plus a peek of the next one;
+    // deeper rows may run off the bottom edge (they drive up into view as the columns advance).
+    for (const col of this.columns) {
+      const front = col[0];
+      if (!front) continue;
+      const p = front.root.position;
+      const z = p.z - front.halfLen - 1.4;
+      pts.push(new Vector3(p.x - 1, 0, z), new Vector3(p.x + 1, 0, z));
     }
+    // Symmetric about the road/lot centre line (x = 0): the playfield sits in the middle of the
+    // screen even though the two stations reach out by different amounts.
+    for (const p of [...pts]) pts.push(p.clone().setX(-p.x));
     stage.frame(pts);
+    if (import.meta.env.DEV) {
+      const xs = pts.map((p) => p.x), zs = pts.map((p) => p.z);
+      (window as unknown as { __fitPts: Vector3[] }).__fitPts = pts;
+      (window as unknown as { __fit: string }).__fit = `x ${Math.min(...xs).toFixed(2)}..${Math.max(...xs).toFixed(2)} z ${Math.min(...zs).toFixed(2)}..${Math.max(...zs).toFixed(2)}`;
+    }
 
     this.syncRoadHud();
     hud.showTip('Tap a bus to pick up its colour!');

@@ -77,6 +77,14 @@ The pipeline finds the two road gaps in the lot's front curb (as holes in the x-
 curb triangles: x = ±4.40, each 2.02 m wide) and the lot edge (z = 1.011). It then moves the road so its
 2.02 m end caps sit in the gaps, flush with the edge (dx = +1.905, dz = −0.719).
 
+### Playfield stretched to fit 9:16
+
+The art's road loop is narrow next to its own height, so on a 9:16 phone the camera ended up
+height-bound and the road filled only part of the width. The pipeline scales the road, the lot and the
+baked bus path in X by 1.3, all about the same centre, so the road ends stay in the curb gaps. Both
+shaders are unlit, so a non-uniform scale is safe. The layout's aspect now matches portrait phones and
+the road fills the width. On 1:1 screens the camera fit becomes height-bound and everything still fits.
+
 ### Baked data instead of runtime work
 
 The **road centerline (bus path)** is computed at build time from the spline mesh: walk the boundary loop

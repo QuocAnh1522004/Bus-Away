@@ -14,7 +14,7 @@ export class Stage {
 
   private last = 0;
   private readonly focus = new Vector3();
-  private readonly tilt: number; // camera pitch (radians from horizontal)
+  private tilt: number; // camera pitch (radians from horizontal)
   private fitPoints: Vector3[] = [new Vector3(-1, 0, -1), new Vector3(1, 0, 1)];
   width = 1;
   height = 1;
@@ -27,7 +27,14 @@ export class Stage {
     this.renderer = new WebGLRenderer({ antialias: true, powerPreference: 'high-performance', stencil: false });
     this.renderer.setClearColor(clearColor);
     host.appendChild(this.renderer.domElement);
-    this.tilt = (58 * Math.PI) / 180;
+    // Steep, near top-down like the reference game; the seat grids read clearly at this angle.
+    this.tilt = (64 * Math.PI) / 180;
+    if (import.meta.env.DEV) {
+      // ?tilt=deg&fov=deg — camera tuning in the dev server
+      const q = new URLSearchParams(location.search);
+      if (q.has('tilt')) this.tilt = (Number(q.get('tilt')) * Math.PI) / 180;
+      if (q.has('fov')) this.camera.fov = Number(q.get('fov'));
+    }
     const resize = () => this.resize();
     window.addEventListener('resize', resize);
     window.addEventListener('orientationchange', resize);
@@ -92,7 +99,7 @@ export class Stage {
     };
 
     // Binary-search the distance: content (centred) must fit the free band.
-    const margin = 1.04;
+    const margin = 1.02;
     let lo = 5;
     let hi = 150;
     for (let it = 0; it < 30; it++) {
@@ -124,6 +131,10 @@ export class Stage {
 
   start() {
     const loop = (t: number) => {
+      // Re-fit whenever the viewport no longer matches the last layout. Ad webviews (and headless
+      // browsers) can resize the page without delivering a resize event; a stale aspect stretches
+      // the frame and crops the sides.
+      if (window.innerWidth !== this.width || window.innerHeight !== this.height) this.resize();
       const dt = this.last ? Math.min((t - this.last) / 1000, 1 / 20) : 1 / 60;
       this.last = t;
       this.onUpdate(dt);
